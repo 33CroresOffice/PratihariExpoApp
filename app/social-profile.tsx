@@ -14,9 +14,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
+import { useOffline } from '@/contexts/OfflineContext';
 import { supabase } from '@/lib/supabase';
+import { cacheGet, cacheSet } from '@/lib/offlineCache';
 import { CachedImage } from '@/components/CachedImage';
 import { useDrawer, DrawerPanel, MenuButton } from '@/components/SlideDrawer';
+import { OfflineBanner } from '@/components/OfflineBanner';
 import { ArrowLeft, Share2, ExternalLink, Facebook, Twitter, Instagram, Linkedin, Youtube, Globe, User } from 'lucide-react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -99,6 +102,7 @@ function resolveUrl(value: string, baseUrl: string) {
 export default function SocialProfileScreen() {
   const drawer = useDrawer();
   const { user } = useAuth();
+  const { isOnline } = useOffline();
   const router = useRouter();
   const { t } = useLanguage();
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -107,25 +111,41 @@ export default function SocialProfileScreen() {
   useEffect(() => {
     async function load() {
       if (!user) return;
+
+      // Hydrate from cache immediately so offline users see data
+      const cached = await cacheGet<Profile>(user.id, 'social_profile');
+      if (cached?.data) {
+        setProfile(cached.data);
+        setLoading(false);
+      }
+
+      if (!isOnline) return;
+
+      const FIELDS = 'id, full_name, first_name, last_name, alias_name, photo_url, bansa_name, registration_no, social_facebook, social_twitter, social_instagram, social_linkedin, social_youtube';
       const { data } = await supabase
         .from('sebayats')
-        .select('id, full_name, first_name, last_name, alias_name, photo_url, bansa_name, registration_no, social_facebook, social_twitter, social_instagram, social_linkedin, social_youtube')
+        .select(FIELDS)
         .eq('auth_user_id', user.id)
         .maybeSingle();
-      if (!data) {
+
+      let fresh: Profile | null = data;
+      if (!fresh) {
         const { data: d2 } = await supabase
           .from('sebayats')
-          .select('id, full_name, first_name, last_name, alias_name, photo_url, bansa_name, registration_no, social_facebook, social_twitter, social_instagram, social_linkedin, social_youtube')
+          .select(FIELDS)
           .eq('id', user.id)
           .maybeSingle();
-        setProfile(d2);
-      } else {
-        setProfile(data);
+        fresh = d2;
+      }
+
+      if (fresh) {
+        setProfile(fresh);
+        await cacheSet(user.id, 'social_profile', fresh);
       }
       setLoading(false);
     }
     load();
-  }, [user]);
+  }, [user, isOnline]);
 
   const displayName = profile
     ? (profile.full_name || [profile.first_name, profile.last_name].filter(Boolean).join(' ') || 'Sebayat')
@@ -182,6 +202,7 @@ export default function SocialProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <OfflineBanner />
       <LinearGradient colors={['#A07010', '#7A5408']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
           <ArrowLeft color="#fff" size={22} />

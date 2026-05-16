@@ -22,7 +22,8 @@ export type CacheSegment =
   | 'pending_app_count'
   | 'group_counts'
   | 'active_sessions'
-  | 'user_groups';
+  | 'user_groups'
+  | 'social_profile';
 
 interface Envelope<T> {
   data: T;
