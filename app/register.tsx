@@ -12,7 +12,9 @@ import {
   Switch,
   Modal,
   Image,
+  Alert,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -58,6 +60,42 @@ const T = {
 const STEPS = ['Personal', 'Contact & IDs', 'Seba', 'Family', 'Address', 'Occupation', 'Social'];
 
 const ID_TYPES = ['Aadhar Card', 'PAN Card', 'Voter ID', 'Passport', 'Driving Licence'];
+
+function getSafeImageExtension(mimeType?: string, uri?: string): string {
+  const fromMime = mimeType?.split('/')?.[1]?.toLowerCase();
+  const fromUri = uri?.split('?')?.[0]?.split('.')?.pop()?.toLowerCase();
+
+  const ext = fromMime || fromUri || 'jpg';
+  if (ext === 'jpeg') return 'jpg';
+
+  return ['jpg', 'png', 'webp', 'heic', 'heif'].includes(ext) ? ext : 'jpg';
+}
+
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const cleaned = base64.replace(/^data:.*;base64,/, '').replace(/[^A-Za-z0-9+/=]/g, '');
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const padding = cleaned.endsWith('==') ? 2 : cleaned.endsWith('=') ? 1 : 0;
+  const byteLength = Math.floor((cleaned.length * 3) / 4) - padding;
+  const bytes = new Uint8Array(byteLength);
+
+  let byteIndex = 0;
+
+  for (let i = 0; i < cleaned.length; i += 4) {
+    const enc1 = chars.indexOf(cleaned[i]);
+    const enc2 = chars.indexOf(cleaned[i + 1]);
+    const enc3 = cleaned[i + 2] === '=' ? 64 : chars.indexOf(cleaned[i + 2]);
+    const enc4 = cleaned[i + 3] === '=' ? 64 : chars.indexOf(cleaned[i + 3]);
+
+    const triplet = (enc1 << 18) | (enc2 << 12) | ((enc3 & 63) << 6) | (enc4 & 63);
+
+    if (byteIndex < byteLength) bytes[byteIndex++] = (triplet >> 16) & 255;
+    if (byteIndex < byteLength) bytes[byteIndex++] = (triplet >> 8) & 255;
+    if (byteIndex < byteLength) bytes[byteIndex++] = triplet & 255;
+  }
+
+  return bytes.buffer;
+}
+
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -779,7 +817,7 @@ export default function RegisterScreen() {
 
   function saveDraft(f: FormData, s: number) {
     if (typeof window === 'undefined') return;
-    try { window.sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ form: f, step: s, ts: Date.now() })); } catch {}
+    try { window.sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ form: f, step: s, ts: Date.now() })); } catch { }
   }
 
   function loadDraft(): { form: FormData; step: number } | null {
@@ -793,7 +831,7 @@ export default function RegisterScreen() {
 
   function clearDraft() {
     if (typeof window === 'undefined') return;
-    try { window.sessionStorage.removeItem(DRAFT_KEY); } catch {}
+    try { window.sessionStorage.removeItem(DRAFT_KEY); } catch { }
   }
 
   const [step, setStep] = useState(() => loadDraft()?.step ?? 0);
@@ -835,29 +873,131 @@ export default function RegisterScreen() {
     storageKey: string,
     onSuccess: (url: string) => void,
   ) {
-    if (Platform.OS !== 'web') return;
-    return new Promise<void>((resolve) => {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/jpeg,image/png,image/webp';
-      input.onchange = async () => {
-        const file = input.files?.[0];
-        if (!file) { resolve(); return; }
-        setUploadingKey(storageKey);
-        const ext = file.name.split('.').pop() || 'jpg';
-        const path = `${user!.id}/${storageKey}-${Date.now()}.${ext}`;
-        const { error } = await supabase.storage
-          .from('profile-photos')
-          .upload(path, file, { upsert: true, contentType: file.type });
-        if (!error) {
-          const { data } = supabase.storage.from('profile-photos').getPublicUrl(path);
-          onSuccess(data.publicUrl);
+    if (!user?.id) {
+      Alert.alert('Login required', 'Please login again before uploading an image.');
+      return;
+    }
+
+    const bucketName = 'profile-photos';
+
+    try {
+      setUploadingKey(storageKey);
+
+      if (Platform.OS === 'web') {
+        await new Promise<void>((resolve) => {
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = 'image/jpeg,image/png,image/webp,image/heic,image/heif';
+
+          input.onchange = async () => {
+            try {
+              const file = input.files?.[0];
+              if (!file) {
+                resolve();
+                return;
+              }
+
+              const ext = getSafeImageExtension(file.type, file.name);
+              const path = `${user.id}/${storageKey}-${Date.now()}.${ext}`;
+
+              const { error } = await supabase.storage
+                .from(bucketName)
+                .upload(path, file, {
+                  upsert: true,
+                  cacheControl: '3600',
+                  contentType: file.type || `image/${ext}`,
+                });
+
+              if (error) {
+                Alert.alert('Upload failed', error.message);
+                resolve();
+                return;
+              }
+
+              const { data } = supabase.storage.from(bucketName).getPublicUrl(path);
+              onSuccess(data.publicUrl);
+              resolve();
+            } catch (err: any) {
+              Alert.alert('Upload failed', err?.message || 'Unable to upload selected image.');
+              resolve();
+            }
+          };
+
+          input.click();
+        });
+
+        return;
+      }
+
+      /*
+       * Android:
+       * Do not call requestMediaLibraryPermissionsAsync before opening the picker.
+       * Android's system photo picker handles permission itself on supported versions.
+       *
+       * iOS:
+       * Ask permission first so the user sees a clear message.
+       */
+      if (Platform.OS === 'ios') {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+        if (permission.status !== 'granted') {
+          Alert.alert(
+            'Permission needed',
+            'Please allow photo library access to upload images.',
+          );
+          return;
         }
-        setUploadingKey(null);
-        resolve();
-      };
-      input.click();
-    });
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.85,
+        base64: true,
+        exif: false,
+      });
+
+      if (result.canceled || !result.assets?.length) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      const mimeType = asset.mimeType || 'image/jpeg';
+      const ext = getSafeImageExtension(mimeType, asset.uri);
+      const path = `${user.id}/${storageKey}-${Date.now()}.${ext}`;
+
+      let fileBody: ArrayBuffer;
+
+      if (asset.base64) {
+        fileBody = base64ToArrayBuffer(asset.base64);
+      } else {
+        const response = await fetch(asset.uri);
+        fileBody = await response.arrayBuffer();
+      }
+
+      const { error } = await supabase.storage
+        .from(bucketName)
+        .upload(path, fileBody, {
+          upsert: true,
+          cacheControl: '3600',
+          contentType: mimeType,
+        });
+
+      if (error) {
+        Alert.alert('Upload failed', error.message);
+        return;
+      }
+
+      const { data } = supabase.storage.from(bucketName).getPublicUrl(path);
+      onSuccess(data.publicUrl);
+    } catch (err: any) {
+      Alert.alert(
+        'Upload failed',
+        err?.message || 'Could not open image picker. Please rebuild the app and try again.',
+      );
+    } finally {
+      setUploadingKey(null);
+    }
   }
 
   useEffect(() => {
@@ -870,11 +1010,11 @@ export default function RegisterScreen() {
       if (rowId) setSebayatRowId(rowId);
       const [{ data: phones }, { data: kids }, { data: occs }, { data: idDocs }] = rowId
         ? await Promise.all([
-            supabase.from('phone_numbers').select('*').eq('sebayat_id', rowId),
-            supabase.from('children').select('*').eq('sebayat_id', rowId),
-            supabase.from('occupations').select('*').eq('sebayat_id', rowId),
-            supabase.from('identity_documents').select('*').eq('sebayat_id', rowId),
-          ])
+          supabase.from('phone_numbers').select('*').eq('sebayat_id', rowId),
+          supabase.from('children').select('*').eq('sebayat_id', rowId),
+          supabase.from('occupations').select('*').eq('sebayat_id', rowId),
+          supabase.from('identity_documents').select('*').eq('sebayat_id', rowId),
+        ])
         : [{ data: null }, { data: null }, { data: null }, { data: null }];
       // Resolve the user's phone from all available sources
       const resolvedPhone = (
@@ -1178,7 +1318,7 @@ export default function RegisterScreen() {
         const dob = form.date_of_birth;
         const parts = dob.split('/');
         if (parts.length === 3 && parts[2].length === 4) {
-          return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+          return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
         }
         return dob || null;
       })(),
@@ -1252,10 +1392,10 @@ export default function RegisterScreen() {
     await supabase.from('profile_review_history').insert({ sebayat_id: rowId, from_status: existingStatus || 'draft', to_status: newStatus, remarks: isResub ? 'Resubmitted after changes' : 'Initial submission', changed_by: user!.id });
 
     // Notify admins of new/resubmitted registration
-    const name = [form.first_name, form.last_name].filter(Boolean).join(' ') || form.mobile_primary || '';
+    const name = [form.first_name, form.last_name].filter(Boolean).join(' ') || form.primary_phone || '';
     sendNotification('registration_submitted', rowId, {
       name,
-      phone: form.mobile_primary || '',
+      phone: form.primary_phone || '',
       reference_type: 'sebayat',
       reference_id: rowId,
     }, 'admin');
@@ -1276,7 +1416,9 @@ export default function RegisterScreen() {
         <View style={p.fieldWrap}>
           <Label text="Primary Phone" required />
           <View style={s.lockedPhoneRow}>
-            <View style={p.iconSlot}><Phone color={T.inkTertiary} size={18} /></View>
+            <View style={{ width: 48, alignItems: 'center', justifyContent: 'center' }}>
+              <Phone color={T.inkTertiary} size={18} />
+            </View>
             <View style={p.iconDivider} />
             <Text style={s.lockedPhoneTxt}>
               {form.primary_phone
@@ -1663,8 +1805,8 @@ export default function RegisterScreen() {
             ].map((opt) => {
               const selected =
                 opt.key === 'bhagari' ? form.is_bhagari :
-                opt.key === 'baristha' ? form.is_baristha_bhai_pua :
-                !form.is_bhagari && !form.is_baristha_bhai_pua;
+                  opt.key === 'baristha' ? form.is_baristha_bhai_pua :
+                    !form.is_bhagari && !form.is_baristha_bhai_pua;
               return (
                 <TouchableOpacity
                   key={opt.key}
