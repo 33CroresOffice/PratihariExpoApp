@@ -53,11 +53,12 @@ type HistoryEntry = {
   id: string;
   service_date: string;
   seba_name: string;
-  beddha_number: number | null;  // the specific beddha active when the session was started
+  beddha_number: number | null;
   is_absent: boolean;
   started_at: string | null;
   ended_at: string | null;
   duration_minutes: number | null;
+  duration_seconds: number | null;
 };
 
 function formatDate(dateStr: string) {
@@ -73,11 +74,29 @@ function formatTime(ts: string) {
   });
 }
 
-function formatDuration(minutes: number) {
-  if (minutes < 60) return `${minutes}m`;
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
+function formatDuration(seconds: number) {
+  if (seconds < 60) return `${seconds}s`;
+  const totalMinutes = Math.floor(seconds / 60);
+  if (totalMinutes < 60) {
+    const s = seconds % 60;
+    return s > 0 ? `${totalMinutes}m ${s}s` : `${totalMinutes}m`;
+  }
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function formatDurationFromMinutes(minutes: number) {
+  return formatDuration(minutes * 60);
+}
+
+function totalSecondsDisplay(totalSeconds: number) {
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const m = Math.floor(totalSeconds / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem > 0 ? `${h}h ${rem}m` : `${h}h`;
 }
 
 function todayIso() {
@@ -145,7 +164,7 @@ export default function PaliHistoryScreen() {
     const [sessionResult, rosterResult] = await Promise.all([
       supabase
         .from('seba_sessions')
-        .select('id, roster_id, seba_category_id, service_date, started_at, ended_at, duration_minutes, beddha_number, seba_categories(name)')
+        .select('id, roster_id, seba_category_id, service_date, started_at, ended_at, duration_minutes, duration_seconds, beddha_number, seba_categories(name)')
         .eq('sebayat_id', sid)
         .not('ended_at', 'is', null)
         .lte('service_date', today)
@@ -188,6 +207,7 @@ export default function PaliHistoryScreen() {
           started_at: null,
           ended_at: null,
           duration_minutes: null,
+          duration_seconds: null,
         });
       }
     }
@@ -195,8 +215,15 @@ export default function PaliHistoryScreen() {
     const sessionEntries: HistoryEntry[] = [...latestByDateCat.values()].map((s) => {
       const key = `${s.service_date}__${s.seba_category_id}`;
       const roster = rosterByDateCat.get(key);
-      // Use beddha stored on session; fall back to roster's beddha
       const beddha = s.beddha_number ?? roster?.beddha_number ?? null;
+      // Prefer stored duration_seconds; fall back to computing from timestamps; then from minutes
+      let durSec: number | null = s.duration_seconds ?? null;
+      if (durSec == null && s.started_at && s.ended_at) {
+        durSec = Math.floor((new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()) / 1000);
+      }
+      if (durSec == null && s.duration_minutes != null) {
+        durSec = s.duration_minutes * 60;
+      }
       return {
         id: s.id,
         service_date: s.service_date,
@@ -206,6 +233,7 @@ export default function PaliHistoryScreen() {
         started_at: s.started_at,
         ended_at: s.ended_at,
         duration_minutes: s.duration_minutes,
+        duration_seconds: durSec,
       };
     });
 
@@ -237,11 +265,15 @@ export default function PaliHistoryScreen() {
 
   // Stats derived from the filtered range
   const filteredCompleted = useMemo(
-    () => displayedHistory.filter((h) => !h.is_absent && h.duration_minutes != null),
+    () => displayedHistory.filter((h) => !h.is_absent && (h.duration_seconds != null || h.duration_minutes != null)),
     [displayedHistory]
   );
-  const filteredTotalMinutes = useMemo(
-    () => filteredCompleted.reduce((acc, h) => acc + (h.duration_minutes ?? 0), 0),
+  const filteredTotalSeconds = useMemo(
+    () => filteredCompleted.reduce((acc, h) => {
+      if (h.duration_seconds != null) return acc + h.duration_seconds;
+      if (h.duration_minutes != null) return acc + h.duration_minutes * 60;
+      return acc;
+    }, 0),
     [filteredCompleted]
   );
 
@@ -420,13 +452,13 @@ export default function PaliHistoryScreen() {
                   </View>
                 </>
               )}
-              {item.duration_minutes != null && (
+              {(item.duration_seconds != null || item.duration_minutes != null) && (
                 <>
                   <View style={styles.timeSep} />
                   <View style={styles.timeItem}>
                     <Timer color={C.gold} size={12} strokeWidth={2.5} />
                     <Text style={[styles.timeValue, { color: C.gold, fontFamily: 'Poppins_700Bold' }]}>
-                      {formatDuration(item.duration_minutes)}
+                      {formatDuration(item.duration_seconds ?? (item.duration_minutes! * 60))}
                     </Text>
                   </View>
                 </>
@@ -539,7 +571,7 @@ export default function PaliHistoryScreen() {
                   <View style={styles.summaryDivider} />
                   <View style={styles.summaryItem}>
                     <Clock color={C.gold} size={18} />
-                    <Text style={styles.summaryValue}>{filteredTotalMinutes >= 60 ? `${Math.round(filteredTotalMinutes / 60)}h` : `${filteredTotalMinutes}m`}</Text>
+                    <Text style={styles.summaryValue}>{totalSecondsDisplay(filteredTotalSeconds)}</Text>
                     <Text style={styles.summaryLabel}>{t('paliHistory.hoursServed')}</Text>
                   </View>
                 </View>

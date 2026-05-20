@@ -158,7 +158,7 @@
     "gender": "ଲିଙ୍ଗ",
     "bloodGroup": "ରକ୍ତ ଗ୍ରୁପ",
     "sebayatStatus": "ସେବାୟତ ସ୍ଥିତି",
-    "bhagari": "ଭାଗୀ",
+    "bhagari": "ଭଗାରି",
     "baristhaBhaiPua": "ବରିଷ୍ଠ ଭାଇ ପୁଆ",
     "healthCardNo": "ସ୍ୱାସ୍ଥ୍ୟ କାର୍ଡ ନଂ.",
     "healthCard": "ସ୍ୱାସ୍ଥ୍ୟ କାର୍ଡ",
@@ -264,7 +264,14 @@
     "newBadge": "{{count}} ନୂଆ",
     "noNotices": "କୋଣସି ସୂଚନା ନାହିଁ",
     "noNoticesAll": "ପ୍ରତିହାରୀ ନିଯୋଗର ଅଧିକୃତ ଘୋଷଣାଗୁଡ଼ିକ ଏଠାରେ ଦେଖାଯିବ।",
-    "noNoticesCategory": "ଏହି ସମୟରେ କୋଣସି {{category}} ସୂଚନା ନାହିଁ।"
+    "noNoticesCategory": "ଏହି ସମୟରେ କୋଣସି {{category}} ସୂଚନା ନାହିଁ।",
+    "general": "ସାଧାରଣ",
+    "duty": "କର୍ତ୍ତବ୍ୟ",
+    "event": "ଉତ୍ସବ",
+    "urgent": "ଜରୁରୀ",
+    "today": "ଆଜି",
+    "yesterday": "ଗତକାଲି",
+    "daysAgo": "{{count}} ଦିନ ପୂର୍ବେ"
   },
   "committee": {
     "title": "କମିଟି",

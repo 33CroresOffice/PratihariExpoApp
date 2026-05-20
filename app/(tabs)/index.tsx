@@ -215,7 +215,7 @@ export default function HomeScreen() {
   const [changeSection, setChangeSection] = useState('');
 
   // Startup notice modal
-  type StartupNotice = { id: string; title: string; body: string; category: string; pinned: boolean; published_at: string | null };
+  type StartupNotice = { id: string; title: string; title_or: string | null; body: string; body_or: string | null; category: string; pinned: boolean; published_at: string | null };
   const [startupNotices, setStartupNotices] = useState<StartupNotice[]>([]);
   const [startupNoticeIndex, setStartupNoticeIndex] = useState(0);
   const [showStartupNotice, setShowStartupNotice] = useState(false);
@@ -228,7 +228,7 @@ export default function HomeScreen() {
   // Seba session tracking
   type SebaSession = { id: string; started_at: string; roster_id?: string | null; seba_category_id: string; service_date: string };
   const [activeSessions, setActiveSessions] = useState<Record<string, SebaSession>>({}); // key: seba_name+beddha_number — in progress
-  const [doneSessions, setDoneSessions] = useState<Record<string, { started_at: string; ended_at: string; duration_minutes: number }>>({}); // key: completed today
+  const [doneSessions, setDoneSessions] = useState<Record<string, { started_at: string; ended_at: string; duration_minutes: number; duration_seconds?: number }>>({}); // key: completed today
   const [sessionElapsed, setSessionElapsed] = useState<Record<string, number>>({}); // seconds
   const sessionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -402,11 +402,17 @@ export default function HomeScreen() {
     return `${s}s`;
   }
 
-  function formatDuration(minutes: number) {
-    if (minutes < 60) return `${minutes}m`;
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  function formatDuration(minutes: number, seconds?: number) {
+    const totalSec = seconds ?? minutes * 60;
+    if (totalSec < 60) return `${totalSec}s`;
+    const m = Math.floor(totalSec / 60);
+    if (m < 60) {
+      const s = totalSec % 60;
+      return s > 0 ? `${m}m ${s}s` : `${m}m`;
+    }
+    const h = Math.floor(m / 60);
+    const rem = m % 60;
+    return rem > 0 ? `${h}h ${rem}m` : `${h}h`;
   }
 
   async function fetchActiveSessions(sid: string) {
@@ -415,13 +421,13 @@ export default function HomeScreen() {
     // Fetch today's sessions — beddha_number is stored directly on the row
     const { data } = await supabase
       .from('seba_sessions')
-      .select('id, started_at, ended_at, duration_minutes, roster_id, seba_category_id, service_date, beddha_number, seba_categories!inner(name)')
+      .select('id, started_at, ended_at, duration_minutes, duration_seconds, roster_id, seba_category_id, service_date, beddha_number, seba_categories!inner(name)')
       .eq('sebayat_id', sid)
       .eq('service_date', today)
       .order('started_at', { ascending: false });
 
     const active: Record<string, SebaSession> = {};
-    const done: Record<string, { started_at: string; ended_at: string; duration_minutes: number }> = {};
+    const done: Record<string, { started_at: string; ended_at: string; duration_minutes: number; duration_seconds?: number }> = {};
     const elapsed: Record<string, number> = {};
     const now = Date.now();
 
@@ -433,7 +439,12 @@ export default function HomeScreen() {
       if (row.ended_at) {
         // Only keep the most recent completed session per key (ordered by started_at desc)
         if (!done[key]) {
-          done[key] = { started_at: row.started_at, ended_at: row.ended_at, duration_minutes: row.duration_minutes ?? 0 };
+          // Compute duration_seconds from timestamps if column is null (older sessions)
+          const storedSec: number | null = row.duration_seconds ?? null;
+          const computedSec = storedSec ?? (row.started_at && row.ended_at
+            ? Math.floor((new Date(row.ended_at).getTime() - new Date(row.started_at).getTime()) / 1000)
+            : (row.duration_minutes ?? 0) * 60);
+          done[key] = { started_at: row.started_at, ended_at: row.ended_at, duration_minutes: row.duration_minutes ?? 0, duration_seconds: computedSec };
         }
       } else {
         // Only keep the latest in-progress session per key
@@ -498,11 +509,12 @@ export default function HomeScreen() {
     if (!session) return;
 
     const endedAt = new Date();
-    const durationMinutes = Math.floor((endedAt.getTime() - new Date(session.started_at).getTime()) / 60000);
+    const durationSeconds = Math.floor((endedAt.getTime() - new Date(session.started_at).getTime()) / 1000);
+    const durationMinutes = Math.floor(durationSeconds / 60);
 
     await supabase
       .from('seba_sessions')
-      .update({ ended_at: endedAt.toISOString(), duration_minutes: durationMinutes })
+      .update({ ended_at: endedAt.toISOString(), duration_minutes: durationMinutes, duration_seconds: durationSeconds })
       .eq('id', session.id);
 
     setActiveSessions((prev) => {
@@ -517,7 +529,7 @@ export default function HomeScreen() {
     });
     setDoneSessions((prev) => ({
       ...prev,
-      [key]: { started_at: session.started_at, ended_at: endedAt.toISOString(), duration_minutes: durationMinutes },
+      [key]: { started_at: session.started_at, ended_at: endedAt.toISOString(), duration_minutes: durationMinutes, duration_seconds: durationSeconds },
     }));
   }
 
@@ -808,7 +820,7 @@ export default function HomeScreen() {
     const now = new Date().toISOString();
     const { data: allNotices } = await supabase
       .from('notices')
-      .select('id, title, body, category, pinned, published_at, target_type, target_ids, expires_at')
+      .select('id, title, title_or, body, body_or, category, pinned, published_at, target_type, target_ids, expires_at')
       .eq('is_published', true)
       .lte('published_at', now)
       .order('pinned', { ascending: false })
@@ -1208,7 +1220,7 @@ export default function HomeScreen() {
                         <View style={styles.elapsedRow}>
                           <Clock color="rgba(255,255,255,0.7)" size={12} />
                           <Text style={styles.elapsedText}>
-                            {formatDuration(doneSession.duration_minutes)}
+                            {formatDuration(doneSession.duration_minutes, doneSession.duration_seconds)}
                           </Text>
                         </View>
                       )}
@@ -1601,11 +1613,11 @@ export default function HomeScreen() {
         const notice = startupNotices[startupNoticeIndex];
         const total = startupNotices.length;
         const current = startupNoticeIndex + 1;
-        const catColors: Record<string, { color: string; bg: string; label: string }> = {
-          general: { color: '#1D6FAE', bg: '#EBF5FB', label: 'General' },
-          duty:    { color: '#B7770D', bg: '#FFF3CD', label: 'Duty' },
-          event:   { color: '#27AE60', bg: '#F0FFF4', label: 'Event' },
-          urgent:  { color: '#C0392B', bg: '#FFF5F5', label: 'Urgent' },
+        const catColors: Record<string, { color: string; bg: string; labelKey: string }> = {
+          general: { color: '#1D6FAE', bg: '#EBF5FB', labelKey: 'notice.general' },
+          duty:    { color: '#B7770D', bg: '#FFF3CD', labelKey: 'notice.duty' },
+          event:   { color: '#27AE60', bg: '#F0FFF4', labelKey: 'notice.event' },
+          urgent:  { color: '#C0392B', bg: '#FFF5F5', labelKey: 'notice.urgent' },
         };
         const cat = catColors[notice.category] ?? catColors.general;
         const isUrgent = notice.category === 'urgent';
@@ -1644,18 +1656,23 @@ export default function HomeScreen() {
                   {/* Category + pinned */}
                   <View style={styles.noticeMetaRow}>
                     <View style={[styles.noticeCatBadge, { backgroundColor: cat.bg }]}>
-                      <Text style={[styles.noticeCatText, { color: cat.color }]}>{cat.label}</Text>
+                      <Text style={[styles.noticeCatText, { color: cat.color }]}>{t(cat.labelKey)}</Text>
                     </View>
                     {notice.pinned && (
                       <View style={styles.noticePinBadge}>
                         <Pin color={C.gold} size={10} />
-                        <Text style={styles.noticePinText}>Pinned</Text>
+                        <Text style={styles.noticePinText}>{t('notice.pinned')}</Text>
                       </View>
                     )}
                     <Text style={styles.noticeTime}>
-                      {notice.published_at
-                        ? new Date(notice.published_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-                        : ''}
+                      {notice.published_at ? (() => {
+                        const diff = Date.now() - new Date(notice.published_at).getTime();
+                        const days = Math.floor(diff / 86400000);
+                        if (days === 0) return t('notice.today');
+                        if (days === 1) return t('notice.yesterday');
+                        if (days < 7) return t('notice.daysAgo', { count: days });
+                        return new Date(notice.published_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+                      })() : ''}
                     </Text>
                   </View>
 

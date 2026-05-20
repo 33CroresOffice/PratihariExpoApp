@@ -264,7 +264,14 @@
     "newBadge": "{{count}} new",
     "noNotices": "No notices",
     "noNoticesAll": "Official announcements from Pratihari Nijog will appear here.",
-    "noNoticesCategory": "No {{category}} notices at the moment."
+    "noNoticesCategory": "No {{category}} notices at the moment.",
+    "general": "General",
+    "duty": "Duty",
+    "event": "Event",
+    "urgent": "Urgent",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "daysAgo": "{{count}} days ago"
   },
   "committee": {
     "title": "Committee",

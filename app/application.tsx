@@ -11,7 +11,9 @@ import {
   TextInput,
   Platform,
   Linking,
+  Alert,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -276,6 +278,59 @@ export default function ApplicationScreen() {
       ...prev,
       { name: file.name, path, url: urlData.publicUrl, size: file.size },
     ]);
+    setUploading(false);
+  }
+
+  async function handleNativeUpload() {
+    if (!sebayatId) return;
+
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Please allow access to your photo library to upload documents.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      quality: 0.85,
+      base64: false,
+    });
+
+    if (result.canceled || result.assets.length === 0) return;
+
+    setUploading(true);
+    setUploadError('');
+
+    for (const asset of result.assets) {
+      const uri = asset.uri;
+      const fileName = asset.fileName ?? `photo_${Date.now()}.jpg`;
+      const mimeType = asset.mimeType ?? 'image/jpeg';
+      const fileSize = asset.fileSize ?? 0;
+      const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path = `${sebayatId}/${Date.now()}_${safeName}`;
+
+      try {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        const { error } = await supabase.storage
+          .from('application-attachments')
+          .upload(path, blob, { contentType: mimeType });
+
+        if (error) {
+          setUploadError(error.message || 'Upload failed');
+          continue;
+        }
+        const { data: urlData } = supabase.storage.from('application-attachments').getPublicUrl(path);
+        setUploadedFiles((prev) => [
+          ...prev,
+          { name: fileName, path, url: urlData.publicUrl, size: fileSize },
+        ]);
+      } catch (e: any) {
+        setUploadError(e?.message ?? 'Upload failed');
+      }
+    }
+
     setUploading(false);
   }
 
@@ -624,9 +679,21 @@ export default function ApplicationScreen() {
                   </TouchableOpacity>
                 </View>
               ) : (
-                <View style={styles.uploadNativeNote}>
-                  <Text style={styles.uploadNativeNoteText}>{t('application.fileUploadWebOnly')}</Text>
-                </View>
+                <TouchableOpacity
+                  style={[styles.uploadBtn, uploading && styles.uploadBtnDisabled]}
+                  onPress={handleNativeUpload}
+                  disabled={uploading}
+                  activeOpacity={0.8}
+                >
+                  {uploading ? (
+                    <ActivityIndicator color={C.saffron} size="small" />
+                  ) : (
+                    <Paperclip color={C.saffron} size={16} />
+                  )}
+                  <Text style={styles.uploadBtnText}>
+                    {uploading ? t('application.uploading') : t('application.chooseFiles')}
+                  </Text>
+                </TouchableOpacity>
               )}
             </View>
           )}
@@ -1209,8 +1276,6 @@ const styles = StyleSheet.create({
   uploadBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: C.saffron, borderStyle: 'dashed', borderRadius: 10, paddingVertical: 12, backgroundColor: '#fff', marginTop: 8 },
   uploadBtnDisabled: { opacity: 0.5 },
   uploadBtnText: { fontSize: 13, fontFamily: 'Poppins_600SemiBold', color: C.saffron },
-  uploadNativeNote: { backgroundColor: '#fff', borderRadius: 8, padding: 10, marginTop: 8, borderWidth: 1, borderColor: C.border },
-  uploadNativeNoteText: { fontSize: 12, fontFamily: 'Poppins_400Regular', color: C.textMuted, textAlign: 'center' },
   fileRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: C.border, padding: 10, marginBottom: 6 },
   fileName: { flex: 1, fontSize: 12, fontFamily: 'Poppins_500Medium', color: C.textPrimary },
   fileSize: { fontSize: 11, fontFamily: 'Poppins_400Regular', color: C.textMuted },

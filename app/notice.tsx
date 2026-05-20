@@ -37,10 +37,10 @@ const C = {
 };
 
 const CATEGORIES = [
-  { key: 'general', label: 'General', color: '#1D6FAE', bg: '#EBF5FB', icon: Info },
-  { key: 'duty',    label: 'Duty',    color: '#B7770D', bg: '#FFF3CD', icon: Calendar },
-  { key: 'event',   label: 'Event',   color: '#27AE60', bg: '#F0FFF4', icon: Briefcase },
-  { key: 'urgent',  label: 'Urgent',  color: '#C0392B', bg: '#FFF5F5', icon: AlertTriangle },
+  { key: 'general', labelKey: 'notice.general', color: '#1D6FAE', bg: '#EBF5FB', icon: Info },
+  { key: 'duty',    labelKey: 'notice.duty',    color: '#B7770D', bg: '#FFF3CD', icon: Calendar },
+  { key: 'event',   labelKey: 'notice.event',   color: '#27AE60', bg: '#F0FFF4', icon: Briefcase },
+  { key: 'urgent',  labelKey: 'notice.urgent',  color: '#C0392B', bg: '#FFF5F5', icon: AlertTriangle },
 ];
 
 function getCat(key: string) {
@@ -50,7 +50,9 @@ function getCat(key: string) {
 interface Notice {
   id: string;
   title: string;
+  title_or: string | null;
   body: string;
+  body_or: string | null;
   category: string;
   pinned: boolean;
   published_at: string | null;
@@ -58,13 +60,13 @@ interface Notice {
   target_ids: string[];
 }
 
-function timeAgo(iso: string | null) {
+function timeAgo(iso: string | null, t: (key: string, opts?: any) => string) {
   if (!iso) return '';
   const diff = Date.now() - new Date(iso).getTime();
   const days = Math.floor(diff / 86400000);
-  if (days === 0) return 'Today';
-  if (days === 1) return 'Yesterday';
-  if (days < 7) return `${days} days ago`;
+  if (days === 0) return t('notice.today');
+  if (days === 1) return t('notice.yesterday');
+  if (days < 7) return t('notice.daysAgo', { count: days });
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
@@ -133,7 +135,7 @@ export default function NoticeScreen() {
 
     const { data } = await supabase
       .from('notices')
-      .select('id, title, body, category, pinned, published_at, target_type, target_ids')
+      .select('id, title, title_or, body, body_or, category, pinned, published_at, target_type, target_ids')
       .eq('is_published', true)
       .order('pinned', { ascending: false })
       .order('published_at', { ascending: false });
@@ -220,7 +222,7 @@ export default function NoticeScreen() {
         <View style={styles.cardTopRow}>
           <View style={[styles.catBadge, { backgroundColor: cat.bg }]}>
             <CatIcon color={cat.color} size={11} />
-            <Text style={[styles.catText, { color: cat.color }]}>{cat.label}</Text>
+            <Text style={[styles.catText, { color: cat.color }]}>{t(cat.labelKey)}</Text>
           </View>
           <View style={styles.cardTopRight}>
             {item.pinned && (
@@ -230,7 +232,7 @@ export default function NoticeScreen() {
               </View>
             )}
             {isUnread && <View style={styles.unreadDot} />}
-            <Text style={styles.cardTime}>{timeAgo(item.published_at)}</Text>
+            <Text style={styles.cardTime}>{timeAgo(item.published_at, t)}</Text>
           </View>
         </View>
 
@@ -294,7 +296,7 @@ export default function NoticeScreen() {
               activeOpacity={0.7}
             >
               <CatIcon color={active ? cat.color : C.textMuted} size={13} />
-              <Text style={[styles.filterChipText, active && { color: cat.color }]}>{cat.label}</Text>
+              <Text style={[styles.filterChipText, active && { color: cat.color }]}>{t(cat.labelKey)}</Text>
             </TouchableOpacity>
           );
         })}
@@ -309,7 +311,7 @@ export default function NoticeScreen() {
           <Text style={styles.emptySub}>
             {filter === 'all'
               ? t('notice.noNoticesAll')
-              : t('notice.noNoticesCategory', { category: getCat(filter).label.toLowerCase() })}
+              : t('notice.noNoticesCategory', { category: t(getCat(filter).labelKey).toLowerCase() })}
           </Text>
         </View>
       ) : (
@@ -349,7 +351,7 @@ export default function NoticeScreen() {
                 </TouchableOpacity>
                 <View style={[styles.catBadge, { backgroundColor: cat.bg }]}>
                   <CatIcon color={cat.color} size={12} />
-                  <Text style={[styles.catText, { color: cat.color }]}>{cat.label}</Text>
+                  <Text style={[styles.catText, { color: cat.color }]}>{t(cat.labelKey)}</Text>
                 </View>
                 {selected.pinned && (
                   <View style={styles.pinBadge}>
@@ -359,7 +361,7 @@ export default function NoticeScreen() {
                 )}
               </View>
               <ScrollView style={styles.detailScroll} showsVerticalScrollIndicator={false}>
-                <Text style={styles.detailTime}>{timeAgo(selected.published_at)}</Text>
+                <Text style={styles.detailTime}>{timeAgo(selected.published_at, t)}</Text>
                 <Text style={[styles.detailTitle, selected.category === 'urgent' && { color: C.error }]}>
                   {pickLocalized(selected as any, 'title', language)}
                 </Text>
