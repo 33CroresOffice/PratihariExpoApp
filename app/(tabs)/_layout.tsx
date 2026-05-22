@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import { House, Calendar, User } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const COLORS = {
   saffron: '#E8732A',
@@ -12,6 +13,7 @@ const COLORS = {
 export default function TabLayout() {
   const { profileStatus } = useAuth();
   const isApproved = profileStatus === 'approved';
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
@@ -23,8 +25,8 @@ export default function TabLayout() {
           backgroundColor: COLORS.warmWhite,
           borderTopColor: COLORS.border,
           borderTopWidth: 1,
-          height: 60,
-          paddingBottom: 8,
+          height: 60 + insets.bottom,
+          paddingBottom: 8 + insets.bottom,
           paddingTop: 8,
         },
         tabBarLabelStyle: {

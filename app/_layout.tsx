@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import {
   Poppins_400Regular,
@@ -94,12 +95,14 @@ export default function RootLayout() {
   }
 
   return (
-    <LanguageProvider>
-      <AuthProvider>
-        <OfflineProvider>
-          <RootNavigator />
-        </OfflineProvider>
-      </AuthProvider>
-    </LanguageProvider>
+    <SafeAreaProvider>
+      <LanguageProvider>
+        <AuthProvider>
+          <OfflineProvider>
+            <RootNavigator />
+          </OfflineProvider>
+        </AuthProvider>
+      </LanguageProvider>
+    </SafeAreaProvider>
   );
 }

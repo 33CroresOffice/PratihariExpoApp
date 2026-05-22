@@ -1768,7 +1768,19 @@ function attachViewHandlers() {
   // Search
   const search = $('#search-input');
   if (search) {
-    search.oninput = (e) => { state.search = e.target.value; state.page = 1; render(); $('#search-input').focus(); };
+    search.oninput = (e) => {
+      state.search = e.target.value;
+      state.page = 1;
+      const val = e.target.value;
+      const selStart = e.target.selectionStart;
+      const selEnd = e.target.selectionEnd;
+      render();
+      const inp = $('#search-input');
+      if (inp) {
+        inp.focus();
+        inp.setSelectionRange(selStart, selEnd);
+      }
+    };
   }
   // Filter tabs
   $$('.filter-tab').forEach(t => {

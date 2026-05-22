@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Download Testing Plan — Excel</title>
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f4f8;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 48px 56px;
+      max-width: 520px;
+      width: 100%;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+      text-align: center;
+    }
+    .icon { font-size: 56px; margin-bottom: 20px; }
+    h1 { font-size: 22px; color: #1a3a5c; margin-bottom: 8px; }
+    p { color: #6c757d; font-size: 14px; line-height: 1.6; margin-bottom: 28px; }
+    .meta {
+      display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+      margin-bottom: 32px;
+    }
+    .chip {
+      background: #e9ecef; border-radius: 20px; padding: 4px 14px;
+      font-size: 12px; font-weight: 600; color: #495057;
+    }
+    .btn {
+      display: inline-flex; align-items: center; gap: 10px;
+      background: #1d6f42; color: white;
+      border: none; border-radius: 10px;
+      padding: 14px 36px; font-size: 16px; font-weight: 600;
+      cursor: pointer; transition: background 0.15s;
+      text-decoration: none;
+    }
+    .btn:hover { background: #155734; }
+    .btn:disabled { background: #adb5bd; cursor: not-allowed; }
+    .status { margin-top: 16px; font-size: 13px; color: #6c757d; min-height: 20px; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">📊</div>
+  <h1>Pratihari Nijog — Testing Plan</h1>
+  <p>Download the complete Testing Plan &amp; Requirements Traceability Matrix as a multi-sheet Excel workbook.</p>
+  <div class="meta">
+    <span class="chip">255 Test Cases</span>
+    <span class="chip">17 Modules</span>
+    <span class="chip">3 Sheets</span>
+    <span class="chip">v1.0 · May 2026</span>
+  </div>
+  <button class="btn" id="dlBtn" onclick="generate()">
+    <span>⬇</span> Download Excel (.xlsx)
+  </button>
+  <div class="status" id="status"></div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+//  ALL 255 TEST CASES  (hardcoded data)
+// ─────────────────────────────────────────────
+var TEST_CASES = [
+// AUTH
+["AUTH-TC-001","AUTH","Authentication (OTP)","Valid phone triggers OTP","P1","PENDING","Enter valid 10-digit Indian mobile number, tap 'Request OTP' — OTP sent via configured channel, OTP screen shown."],
+["AUTH-TC-002","AUTH","Authentication (OTP)","Short phone blocked","P1","PENDING","Enter phone number with less than 10 digits — validation error shown, OTP not sent."],
+["AUTH-TC-003","AUTH","Authentication (OTP)","Non-numeric blocked","P2","PENDING","Enter phone number with non-numeric characters — blocked at input, error shown."],
+["AUTH-TC-004","AUTH","Authentication (OTP)","WhatsApp channel delivers","P1","PENDING","Select WhatsApp channel, request OTP — OTP delivered to WhatsApp."],
+["AUTH-TC-005","AUTH","Authentication (OTP)","SMS channel delivers","P1","PENDING","Select SMS channel, request OTP — OTP delivered via SMS."],
+["AUTH-TC-006","AUTH","Authentication (OTP)","Correct OTP authenticates","P1","PENDING","Enter correct 6-digit OTP within expiry window — user authenticated, redirected to home/registration."],
+["AUTH-TC-007","AUTH","Authentication (OTP)","Wrong OTP shows error","P1","PENDING","Enter incorrect OTP — error message shown, retry allowed."],
+["AUTH-TC-008","AUTH","Authentication (OTP)","Expired OTP shows error","P1","PENDING","Enter OTP after expiry time — expired error shown, resend button offered."],
+["AUTH-TC-009","AUTH","Authentication (OTP)","Resend resets timer","P2","PENDING","Tap 'Resend OTP' — new OTP sent, timer resets."],
+["AUTH-TC-010","AUTH","Authentication (OTP)","OTP rate limit enforced","P1","PENDING","Request OTP more than allowed times in short window — rate limit error shown."],
+["AUTH-TC-011","AUTH","Authentication (OTP)","New user profile created","P1","PENDING","First-time user — after OTP verification, new sebayat row created, redirected to registration."],
+["AUTH-TC-012","AUTH","Authentication (OTP)","Returning user profile loaded","P1","PENDING","Returning user — after OTP verification, existing profile loaded, redirected to home."],
+["AUTH-TC-013","AUTH","Authentication (OTP)","Session cleared on logout","P1","PENDING","Sign out — session cleared, redirected to phone login screen."],
+["AUTH-TC-014","AUTH","Authentication (OTP)","Protected route redirects to login","P1","PENDING","Deep link or refresh on protected route without session — redirected to login."],
+// REG Step 1
+["REG-TC-001","REG","Sebayat Registration","All required fields passes validation","P1","PENDING","Submit with all required fields filled — advances to step 2."],
+["REG-TC-002","REG","Sebayat Registration","First name required error","P1","PENDING","Submit with First Name empty — 'Required' error shown on field."],
+["REG-TC-003","REG","Sebayat Registration","Last name required error","P1","PENDING","Submit with Last Name empty — 'Required' error shown on field."],
+["REG-TC-004","REG","Sebayat Registration","DOB required error","P1","PENDING","Submit with Date of Birth empty — 'Required' error shown."],
+["REG-TC-005","REG","Sebayat Registration","Gender required error","P1","PENDING","Submit with Gender not selected — 'Please select' error shown."],
+["REG-TC-006","REG","Sebayat Registration","Health card required error","P1","PENDING","Submit with Health Card Number empty — 'Required' error shown."],
+["REG-TC-007","REG","Sebayat Registration","Profile photo upload","P1","PENDING","Upload profile photo — image picker opens, photo selected, thumbnail shown."],
+["REG-TC-008","REG","Sebayat Registration","Health card photo upload","P2","PENDING","Upload health card photo — image picker opens, photo uploaded, URL stored."],
+["REG-TC-009","REG","Sebayat Registration","Bhagari toggle","P2","PENDING","Toggle 'Is Bhagari' — state toggled correctly."],
+["REG-TC-010","REG","Sebayat Registration","Baristha toggle","P2","PENDING","Toggle 'Is Baristha Bhai Pua' — state toggled correctly."],
+["REG-TC-011","REG","Sebayat Registration","DOB date picker format","P2","PENDING","Date of Birth picker — selects valid date, displays in DD/MM/YYYY format."],
+// REG Step 2
+["REG-TC-012","REG","Sebayat Registration","Primary phone pre-filled","P1","PENDING","Primary phone pre-filled from auth — correct number shown, login number badge shown."],
+["REG-TC-013","REG","Sebayat Registration","Add valid extra phone","P2","PENDING","Add extra phone number with valid 10-digit number — added to list."],
+["REG-TC-014","REG","Sebayat Registration","Invalid extra phone error","P2","PENDING","Add extra phone number with invalid digits — validation error shown."],
+["REG-TC-015","REG","Sebayat Registration","Remove extra phone","P2","PENDING","Remove an extra phone number — removed from list."],
+["REG-TC-016","REG","Sebayat Registration","WhatsApp same-as-primary","P2","PENDING","WhatsApp 'Same as Primary' toggle — WhatsApp field disabled, copies primary number."],
+["REG-TC-017","REG","Sebayat Registration","Add identity document","P1","PENDING","Add identity document, select type, upload photo — document added to list."],
+["REG-TC-018","REG","Sebayat Registration","No ID document error","P1","PENDING","Submit with no identity document — 'At least one identity card required' error."],
+["REG-TC-019","REG","Sebayat Registration","ID without type error","P1","PENDING","Add identity document without selecting type — 'Please select ID type' error."],
+// REG Steps 3-7
+["REG-TC-020","REG","Sebayat Registration","Bansa name selection","P2","PENDING","Select bansa name from dropdown — selection saved."],
+["REG-TC-021","REG","Sebayat Registration","Seba name selection","P2","PENDING","Select seba name from dropdown — selection saved."],
+["REG-TC-022","REG","Sebayat Registration","Joining date toggle","P2","PENDING","Toggle 'Exact Date' vs 'Year only' for joining date — correct field shown."],
+["REG-TC-023","REG","Sebayat Registration","Joining year format","P2","PENDING","Enter joining year in YYYY format — accepted and stored."],
+["REG-TC-024","REG","Sebayat Registration","Father name required","P1","PENDING","Submit with Father Name empty — 'Required' error."],
+["REG-TC-025","REG","Sebayat Registration","Mother name required","P1","PENDING","Submit with Mother Name empty — 'Required' error."],
+["REG-TC-026","REG","Sebayat Registration","Marital status required","P1","PENDING","Submit with Marital Status not selected — 'Please select' error."],
+["REG-TC-027","REG","Sebayat Registration","Married: spouse name required","P1","PENDING","Select 'Married' — spouse fields appear; submit with spouse name empty — error shown."],
+["REG-TC-028","REG","Sebayat Registration","Non-married: spouse fields hidden","P2","PENDING","Select marital status other than Married — spouse fields hidden."],
+["REG-TC-029","REG","Sebayat Registration","Add child","P2","PENDING","Add a child — child row added with name, DOB, gender, marital status, photo."],
+["REG-TC-030","REG","Sebayat Registration","Remove child","P2","PENDING","Remove a child — child removed from list."],
+["REG-TC-031","REG","Sebayat Registration","Father search & link","P2","PENDING","Search for father by name — autocomplete list appears, select father — ID linked."],
+["REG-TC-032","REG","Sebayat Registration","Sahi required error","P1","PENDING","Submit with Sahi/Lane empty — 'Required' error."],
+["REG-TC-033","REG","Sebayat Registration","Invalid pincode error","P1","PENDING","Submit with Pincode as 5 digits — '6-digit PIN required' error."],
+["REG-TC-034","REG","Sebayat Registration","District/state required","P1","PENDING","Submit with District/State empty — 'Required' error."],
+["REG-TC-035","REG","Sebayat Registration","Current address toggle","P2","PENDING","Toggle 'Current address is different' — current address fields appear."],
+["REG-TC-036","REG","Sebayat Registration","Both addresses saved","P2","PENDING","Fill both permanent and current addresses — both saved correctly."],
+["REG-TC-037","REG","Sebayat Registration","No occupation allowed","P2","PENDING","Submit without any occupation — allowed (occupations optional)."],
+["REG-TC-038","REG","Sebayat Registration","Add occupation","P2","PENDING","Add occupation with name — occupation added to list."],
+["REG-TC-039","REG","Sebayat Registration","Joining year required","P1","PENDING","Submit with Joining Year/Date empty — 'Required' error shown."],
+["REG-TC-040","REG","Sebayat Registration","Facebook URL saved","P3","PENDING","Enter Facebook URL — saved in social_facebook field."],
+["REG-TC-041","REG","Sebayat Registration","Empty socials allowed","P3","PENDING","Leave all social fields empty — submission not blocked (all optional)."],
+["REG-TC-042","REG","Sebayat Registration","Confirmation modal shown","P1","PENDING","Complete all steps, tap 'Submit for Approval' — confirmation modal shown."],
+["REG-TC-043","REG","Sebayat Registration","Submitted status saved","P1","PENDING","Confirm submission — sebayat row saved with status 'submitted', success screen shown."],
+["REG-TC-044","REG","Sebayat Registration","Draft restored on re-entry","P2","PENDING","Re-enter registration after partial completion — draft restored from session storage."],
+["REG-TC-045","REG","Sebayat Registration","Back preserves data","P2","PENDING","Navigate Back through steps — previous step shown with data preserved."],
+// REG Change Request
+["REG-TC-046","REG","Sebayat Registration","Home shows section count badge","P1","PENDING","Admin requests 4 sections changed — mobile shows '4 sections' badge on home CTA."],
+["REG-TC-047","REG","Sebayat Registration","Opens multi-section stepper","P1","PENDING","Tap 'Update Application' — opens Update & Resubmit with multi-section stepper."],
+["REG-TC-048","REG","Sebayat Registration","Admin remarks on every section","P1","PENDING","Admin remarks shown as warning banner on every requested section."],
+["REG-TC-049","REG","Sebayat Registration","Next Section advances stepper","P1","PENDING","Complete first section, tap 'Next Section' — advances to next requested section."],
+["REG-TC-050","REG","Sebayat Registration","Back between sections works","P2","PENDING","Tap Back on section 2 — returns to section 1."],
+["REG-TC-051","REG","Sebayat Registration","Last section shows Resubmit","P1","PENDING","On last section, button shows 'Resubmit' — tap Resubmit submits all changes."],
+["REG-TC-052","REG","Sebayat Registration","After resubmit — status resubmitted","P1","PENDING","After resubmit — status changes to 'resubmitted', home shows 'Resubmitted' card."],
+["REG-TC-053","REG","Sebayat Registration","Single section — immediate Resubmit","P1","PENDING","Admin requests 1 section — stepper shows 1/1, button immediately shows 'Resubmit'."],
+// HOME
+["HOME-TC-001","HOME","Home Screen","No registration — Complete CTA shown","P1","PENDING","No registration — Complete CTA shown on home screen."],
+["HOME-TC-002","HOME","Home Screen","Draft — Complete CTA shown","P1","PENDING","Draft registration — Complete CTA shown on home screen."],
+["HOME-TC-003","HOME","Home Screen","Submitted — Under Review card","P1","PENDING","Submitted registration — Under Review card shown."],
+["HOME-TC-004","HOME","Home Screen","Changes requested — badge count shown","P1","PENDING","Changes requested — badge count shown on home CTA."],
+["HOME-TC-005","HOME","Home Screen","Resubmitted card shown with blue styling","P1","PENDING","Resubmitted card shown with blue styling."],
+["HOME-TC-006","HOME","Home Screen","Approved — full dashboard shown","P1","PENDING","Approved — full dashboard shown with seba info."],
+["HOME-TC-007","HOME","Home Screen","Today's beddha numbers shown","P1","PENDING","Today's beddha numbers shown on home screen."],
+["HOME-TC-008","HOME","Home Screen","Update Application navigates correctly","P1","PENDING","Update Application CTA navigates to registration change flow."],
+["HOME-TC-009","HOME","Home Screen","Unread notice count badge shown","P2","PENDING","Unread notice count badge shown on notices section."],
+["HOME-TC-010","HOME","Home Screen","Startup notice modal appears with carousel","P2","PENDING","Startup notice modal appears with carousel on first load."],
+["HOME-TC-011","HOME","Home Screen","Next/Done navigates carousel","P2","PENDING","Next/Done buttons navigate notice carousel correctly."],
+["HOME-TC-012","HOME","Home Screen","Active seba session with timer shown","P2","PENDING","Active seba session with live timer shown on home."],
+["HOME-TC-013","HOME","Home Screen","Completed session with duration shown","P2","PENDING","Completed session card shows duration."],
+["HOME-TC-014","HOME","Home Screen","Tap duty card navigates to schedule","P2","PENDING","Tapping duty card navigates to schedule screen."],
+["HOME-TC-015","HOME","Home Screen","Carousel images auto-rotate","P3","PENDING","Event image carousel auto-rotates every few seconds."],
+["HOME-TC-016","HOME","Home Screen","Avatar tap navigates to profile","P2","PENDING","Tapping avatar/initials navigates to profile screen."],
+// PROF
+["PROF-TC-001","PROF","Profile Screen","All personal details shown correctly","P1","PENDING","All personal details shown correctly on profile screen."],
+["PROF-TC-002","PROF","Profile Screen","Photo shown or initials fallback","P2","PENDING","Profile photo shown or initials fallback when no photo."],
+["PROF-TC-003","PROF","Profile Screen","Registration number shown if approved","P2","PENDING","Registration number shown if sebayat is approved."],
+["PROF-TC-004","PROF","Profile Screen","All phones and email shown","P1","PENDING","All phone numbers and email shown on profile."],
+["PROF-TC-005","PROF","Profile Screen","Documents with type and photo shown","P1","PENDING","Identity documents with type label and photo shown."],
+["PROF-TC-006","PROF","Profile Screen","Spouse shown only if married","P2","PENDING","Spouse details shown only when marital status is married."],
+["PROF-TC-007","PROF","Profile Screen","Current address conditional display","P2","PENDING","Current address shown only when different from permanent."],
+["PROF-TC-008","PROF","Profile Screen","Nijog assignments shown","P2","PENDING","Nijog/seba assignments shown on profile."],
+["PROF-TC-009","PROF","Profile Screen","Switch to Odia re-renders UI","P2","PENDING","Switching language to Odia re-renders UI in Odia script."],
+["PROF-TC-010","PROF","Profile Screen","Switch back to English works","P2","PENDING","Switching back to English works correctly."],
+["PROF-TC-011","PROF","Profile Screen","Toggle enables offline mode","P2","PENDING","Toggle offline mode — preference saved, offline mode enabled."],
+["PROF-TC-012","PROF","Profile Screen","Sync Now pulls fresh data","P2","PENDING","'Sync Now' button pulls fresh data from server."],
+["PROF-TC-013","PROF","Profile Screen","Clear Cache removes local data","P2","PENDING","'Clear Cache' removes locally cached data."],
+["PROF-TC-014","PROF","Profile Screen","Edit button navigates to register","P1","PENDING","Edit button navigates to registration form with pre-filled data."],
+["PROF-TC-015","PROF","Profile Screen","Sign out clears session","P1","PENDING","Sign out clears session and redirects to login."],
+// SCHED
+["SCHED-TC-001","SCHED","Schedule Screen","Current month calendar shown with today highlighted","P1","PENDING","Current month calendar shown with today highlighted."],
+["SCHED-TC-002","SCHED","Schedule Screen","Duty dates marked on calendar","P1","PENDING","Duty dates marked on calendar with visual indicator."],
+["SCHED-TC-003","SCHED","Schedule Screen","Tap date shows duty details","P1","PENDING","Tapping a duty date shows duty details below calendar."],
+["SCHED-TC-004","SCHED","Schedule Screen","Month navigation works","P2","PENDING","Previous/next month navigation works correctly."],
+["SCHED-TC-005","SCHED","Schedule Screen","Future duty shown","P2","PENDING","Future duty dates shown and navigable."],
+["SCHED-TC-006","SCHED","Schedule Screen","Jump to specific date works","P3","PENDING","Jumping to a specific date navigates calendar correctly."],
+["SCHED-TC-007","SCHED","Schedule Screen","Past duties with duration shown","P2","PENDING","Past duties shown with session duration."],
+["SCHED-TC-008","SCHED","Schedule Screen","Upcoming duty shown","P2","PENDING","Upcoming duty shown in list below calendar."],
+["SCHED-TC-009","SCHED","Schedule Screen","Non-approved user blocked from Schedule tab","P1","PENDING","Non-approved user — Schedule tab hidden/blocked."],
+// NOTICE
+["NOTICE-TC-001","NOTICE","Notice Board","Notices in reverse chronological order","P1","PENDING","Notices shown in reverse chronological order."],
+["NOTICE-TC-002","NOTICE","Notice Board","Pinned notices at top","P2","PENDING","Pinned notices appear at the top of the list."],
+["NOTICE-TC-003","NOTICE","Notice Board","Tap opens full notice detail","P1","PENDING","Tapping a notice opens the full notice detail view."],
+["NOTICE-TC-004","NOTICE","Notice Board","Mark read decrements unread counter","P2","PENDING","Reading a notice decrements the unread counter."],
+["NOTICE-TC-005","NOTICE","Notice Board","Odia content shown in Odia mode","P2","PENDING","Odia content shown when language is set to Odia."],
+["NOTICE-TC-006","NOTICE","Notice Board","English fallback when no Odia translation","P2","PENDING","Falls back to English when no Odia translation exists."],
+["NOTICE-TC-007","NOTICE","Notice Board","Category filter works correctly","P3","PENDING","Category filter correctly filters notice list."],
+// ADMIN-SEP
+["ADMIN-SEP-TC-001","ADMIN-SEP","Admin — Sebayat Profiles","List loads with search and filter","P1","PENDING","Sebayat list loads with search and filter controls."],
+["ADMIN-SEP-TC-002","ADMIN-SEP","Admin — Sebayat Profiles","Search by name filters list","P1","PENDING","Searching by name filters the sebayat list."],
+["ADMIN-SEP-TC-003","ADMIN-SEP","Admin — Sebayat Profiles","Filter by status works","P1","PENDING","Filtering by status (pending/approved/etc.) works."],
+["ADMIN-SEP-TC-004","ADMIN-SEP","Admin — Sebayat Profiles","View sebayat profile detail","P1","PENDING","Clicking a sebayat opens full profile detail view."],
+["ADMIN-SEP-TC-005","ADMIN-SEP","Admin — Sebayat Profiles","Approve application","P1","PENDING","Approving an application changes status to approved."],
+["ADMIN-SEP-TC-006","ADMIN-SEP","Admin — Sebayat Profiles","Reject application with reason","P1","PENDING","Rejecting with reason records rejection and notifies user."],
+["ADMIN-SEP-TC-007","ADMIN-SEP","Admin — Sebayat Profiles","Request changes with section selection","P1","PENDING","Requesting changes allows section selection with remarks."],
+["ADMIN-SEP-TC-008","ADMIN-SEP","Admin — Sebayat Profiles","Section remarks saved","P1","PENDING","Remarks for each section saved and visible."],
+["ADMIN-SEP-TC-009","ADMIN-SEP","Admin — Sebayat Profiles","Resubmitted shown for review","P1","PENDING","Resubmitted applications highlighted for re-review."],
+["ADMIN-SEP-TC-010","ADMIN-SEP","Admin — Sebayat Profiles","Admin-created sebayat saves correctly","P1","PENDING","Admin-created sebayat saved with created_by_admin flag."],
+["ADMIN-SEP-TC-011","ADMIN-SEP","Admin — Sebayat Profiles","All personal fields editable","P2","PENDING","All personal fields editable in admin edit mode."],
+["ADMIN-SEP-TC-012","ADMIN-SEP","Admin — Sebayat Profiles","Identity documents viewable","P2","PENDING","Identity documents viewable with enlarged photo."],
+["ADMIN-SEP-TC-013","ADMIN-SEP","Admin — Sebayat Profiles","Extra phones editable","P2","PENDING","Extra phone numbers editable in admin view."],
+["ADMIN-SEP-TC-014","ADMIN-SEP","Admin — Sebayat Profiles","Occupations editable","P2","PENDING","Occupations list editable in admin view."],
+["ADMIN-SEP-TC-015","ADMIN-SEP","Admin — Sebayat Profiles","Children editable","P2","PENDING","Children list editable in admin view."],
+["ADMIN-SEP-TC-016","ADMIN-SEP","Admin — Sebayat Profiles","Beddha assignment shown","P2","PENDING","Current beddha assignment shown on sebayat profile."],
+["ADMIN-SEP-TC-017","ADMIN-SEP","Admin — Sebayat Profiles","Seba group shown","P2","PENDING","Seba group assignment shown on sebayat profile."],
+["ADMIN-SEP-TC-018","ADMIN-SEP","Admin — Sebayat Profiles","Nijog history viewable","P2","PENDING","Nijog assignment history viewable."],
+["ADMIN-SEP-TC-019","ADMIN-SEP","Admin — Sebayat Profiles","Pagination loads more","P2","PENDING","Pagination or infinite scroll loads more sebayats."],
+["ADMIN-SEP-TC-020","ADMIN-SEP","Admin — Sebayat Profiles","Sort by name works","P2","PENDING","Sorting by name reorders the list."],
+["ADMIN-SEP-TC-021","ADMIN-SEP","Admin — Sebayat Profiles","Sort by joining date works","P2","PENDING","Sorting by joining date reorders the list."],
+["ADMIN-SEP-TC-022","ADMIN-SEP","Admin — Sebayat Profiles","Disable sebayat account","P2","PENDING","Disabling a sebayat account blocks login."],
+["ADMIN-SEP-TC-023","ADMIN-SEP","Admin — Sebayat Profiles","Re-enable sebayat account","P2","PENDING","Re-enabling a disabled account restores access."],
+["ADMIN-SEP-TC-024","ADMIN-SEP","Admin — Sebayat Profiles","Change section assignment","P2","PENDING","Changing section assignment saved correctly."],
+["ADMIN-SEP-TC-025","ADMIN-SEP","Admin — Sebayat Profiles","Seba selection updated by admin","P2","PENDING","Admin can update sebayat's seba selections."],
+["ADMIN-SEP-TC-026","ADMIN-SEP","Admin — Sebayat Profiles","Father sebayat link updated","P2","PENDING","Father sebayat link updatable by admin."],
+["ADMIN-SEP-TC-027","ADMIN-SEP","Admin — Sebayat Profiles","Activity log entry on approve","P1","PENDING","Approving logs an entry in admin activity log."],
+["ADMIN-SEP-TC-028","ADMIN-SEP","Admin — Sebayat Profiles","Activity log entry on reject","P1","PENDING","Rejecting logs an entry in admin activity log."],
+["ADMIN-SEP-TC-029","ADMIN-SEP","Admin — Sebayat Profiles","Activity log on change request","P1","PENDING","Change request logs an entry in admin activity log."],
+["ADMIN-SEP-TC-030","ADMIN-SEP","Admin — Sebayat Profiles","Notification sent on approve","P1","PENDING","Push/SMS notification sent to sebayat on approval."],
+["ADMIN-SEP-TC-031","ADMIN-SEP","Admin — Sebayat Profiles","Export list works","P3","PENDING","Exporting sebayat list generates downloadable file."],
+// ADMIN-APP
+["ADMIN-APP-TC-001","ADMIN-APP","Admin — Applications","Pending applications list shown","P2","PENDING","Pending applications shown in list view."],
+["ADMIN-APP-TC-002","ADMIN-APP","Admin — Applications","Filter by application status","P2","PENDING","Filter by status (pending/resubmitted) works."],
+["ADMIN-APP-TC-003","ADMIN-APP","Admin — Applications","Application detail view","P2","PENDING","Application detail view shows all submitted data."],
+["ADMIN-APP-TC-004","ADMIN-APP","Admin — Applications","Approve from application view","P2","PENDING","Approving from application view changes status."],
+["ADMIN-APP-TC-005","ADMIN-APP","Admin — Applications","Request changes from application view","P2","PENDING","Requesting changes from application view works."],
+["ADMIN-APP-TC-006","ADMIN-APP","Admin — Applications","Attachment download works","P2","PENDING","Downloading application attachments works."],
+["ADMIN-APP-TC-007","ADMIN-APP","Admin — Applications","Batch approve multiple","P3","PENDING","Batch approving multiple applications works."],
+// ADMIN-SEBA
+["ADMIN-SEBA-TC-001","ADMIN-SEBA","Admin — Seba Management","Seba categories list shown","P2","PENDING","Seba categories list shown with names."],
+["ADMIN-SEBA-TC-002","ADMIN-SEBA","Admin — Seba Management","Add seba category","P2","PENDING","Adding a new seba category saves correctly."],
+["ADMIN-SEBA-TC-003","ADMIN-SEBA","Admin — Seba Management","Edit seba category","P2","PENDING","Editing a seba category saves correctly."],
+["ADMIN-SEBA-TC-004","ADMIN-SEBA","Admin — Seba Management","Seba groups list shown","P2","PENDING","Seba groups list shown with assignments."],
+["ADMIN-SEBA-TC-005","ADMIN-SEBA","Admin — Seba Management","Assign sebayat to group","P2","PENDING","Assigning a sebayat to a seba group saves correctly."],
+["ADMIN-SEBA-TC-006","ADMIN-SEBA","Admin — Seba Management","Remove sebayat from group","P2","PENDING","Removing a sebayat from a seba group saves correctly."],
+["ADMIN-SEBA-TC-007","ADMIN-SEBA","Admin — Seba Management","Schedule view shown","P2","PENDING","Schedule view shown with all groups and dates."],
+["ADMIN-SEBA-TC-008","ADMIN-SEBA","Admin — Seba Management","Regenerate schedule","P2","PENDING","Regenerating schedule creates new rotation correctly."],
+["ADMIN-SEBA-TC-009","ADMIN-SEBA","Admin — Seba Management","Override single date","P2","PENDING","Overriding a single date assignment saves correctly."],
+["ADMIN-SEBA-TC-010","ADMIN-SEBA","Admin — Seba Management","Anchor history shown","P2","PENDING","Anchor history shown for schedule tracking."],
+["ADMIN-SEBA-TC-011","ADMIN-SEBA","Admin — Seba Management","Nijog assignment created","P1","PENDING","Creating a nijog assignment saves correctly."],
+["ADMIN-SEBA-TC-012","ADMIN-SEBA","Admin — Seba Management","Nijog assignment updated","P1","PENDING","Updating a nijog assignment saves correctly."],
+["ADMIN-SEBA-TC-013","ADMIN-SEBA","Admin — Seba Management","Seba session started","P1","PENDING","Starting a seba session records start time."],
+["ADMIN-SEBA-TC-014","ADMIN-SEBA","Admin — Seba Management","Seba session ended","P1","PENDING","Ending a seba session records end time and duration."],
+["ADMIN-SEBA-TC-015","ADMIN-SEBA","Admin — Seba Management","Session beddha number recorded","P2","PENDING","Session beddha number saved with session record."],
+["ADMIN-SEBA-TC-016","ADMIN-SEBA","Admin — Seba Management","Seba history viewable","P2","PENDING","Seba session history viewable by admin."],
+["ADMIN-SEBA-TC-017","ADMIN-SEBA","Admin — Seba Management","Beddha numbers for today shown","P2","PENDING","Today's beddha numbers shown in admin view."],
+["ADMIN-SEBA-TC-018","ADMIN-SEBA","Admin — Seba Management","Reminder notification sent","P2","PENDING","Seba reminder notification sent to assigned sebayats."],
+["ADMIN-SEBA-TC-019","ADMIN-SEBA","Admin — Seba Management","Members list by group shown","P2","PENDING","Members list shown filtered by seba group."],
+// ADMIN-MGMT
+["ADMIN-MGMT-TC-001","ADMIN-MGMT","Admin — Notices/Committee/Images","Create notice","P2","PENDING","Creating a notice saves and publishes correctly."],
+["ADMIN-MGMT-TC-002","ADMIN-MGMT","Admin — Notices/Committee/Images","Schedule notice publish","P2","PENDING","Scheduling notice publish at future time works."],
+["ADMIN-MGMT-TC-003","ADMIN-MGMT","Admin — Notices/Committee/Images","Pin/unpin notice","P2","PENDING","Pinning/unpinning a notice changes order."],
+["ADMIN-MGMT-TC-004","ADMIN-MGMT","Admin — Notices/Committee/Images","Edit notice content","P2","PENDING","Editing notice content saves correctly."],
+["ADMIN-MGMT-TC-005","ADMIN-MGMT","Admin — Notices/Committee/Images","Delete notice","P2","PENDING","Deleting a notice removes it from list."],
+["ADMIN-MGMT-TC-006","ADMIN-MGMT","Admin — Notices/Committee/Images","Target notice to group","P2","PENDING","Targeting notice to specific seba group works."],
+["ADMIN-MGMT-TC-007","ADMIN-MGMT","Admin — Notices/Committee/Images","Odia content saved for notice","P2","PENDING","Odia content saved for notice bilingual support."],
+["ADMIN-MGMT-TC-008","ADMIN-MGMT","Admin — Notices/Committee/Images","Committee members list shown","P2","PENDING","Committee members list shown with roles."],
+["ADMIN-MGMT-TC-009","ADMIN-MGMT","Admin — Notices/Committee/Images","Add committee member","P2","PENDING","Adding a committee member saves correctly."],
+["ADMIN-MGMT-TC-010","ADMIN-MGMT","Admin — Notices/Committee/Images","Edit committee member role","P2","PENDING","Editing a committee member role saves correctly."],
+["ADMIN-MGMT-TC-011","ADMIN-MGMT","Admin — Notices/Committee/Images","Remove committee member","P2","PENDING","Removing a committee member works correctly."],
+["ADMIN-MGMT-TC-012","ADMIN-MGMT","Admin — Notices/Committee/Images","Committee displayed in app","P1","PENDING","Committee data displayed correctly in mobile app."],
+["ADMIN-MGMT-TC-013","ADMIN-MGMT","Admin — Notices/Committee/Images","Upload event image","P2","PENDING","Uploading event image saves to storage."],
+["ADMIN-MGMT-TC-014","ADMIN-MGMT","Admin — Notices/Committee/Images","Event image shown in carousel","P2","PENDING","Uploaded event images shown in home carousel."],
+["ADMIN-MGMT-TC-015","ADMIN-MGMT","Admin — Notices/Committee/Images","Delete event image","P2","PENDING","Deleting event image removes from storage and carousel."],
+["ADMIN-MGMT-TC-016","ADMIN-MGMT","Admin — Notices/Committee/Images","Odia committee fields saved","P2","PENDING","Odia content fields for committee saved correctly."],
+["ADMIN-MGMT-TC-017","ADMIN-MGMT","Admin — Notices/Committee/Images","Notice read receipt tracking","P3","PENDING","Notice read receipts tracked per sebayat."],
+["ADMIN-MGMT-TC-018","ADMIN-MGMT","Admin — Notices/Committee/Images","Bulk notice to all sebayats","P3","PENDING","Sending bulk notice to all sebayats works."],
+// ADMIN-SETTINGS
+["ADMIN-SETTINGS-TC-001","ADMIN-SETTINGS","Admin — Settings & RBAC","Admin list shown","P1","PENDING","Admin user list shown with roles."],
+["ADMIN-SETTINGS-TC-002","ADMIN-SETTINGS","Admin — Settings & RBAC","Add new admin","P1","PENDING","Adding new admin creates account and sends credentials."],
+["ADMIN-SETTINGS-TC-003","ADMIN-SETTINGS","Admin — Settings & RBAC","Assign admin role","P2","PENDING","Assigning admin role updates permissions."],
+["ADMIN-SETTINGS-TC-004","ADMIN-SETTINGS","Admin — Settings & RBAC","Revoke admin role","P2","PENDING","Revoking admin role removes permissions."],
+["ADMIN-SETTINGS-TC-005","ADMIN-SETTINGS","Admin — Settings & RBAC","Disable admin account","P2","PENDING","Disabling admin account blocks login."],
+["ADMIN-SETTINGS-TC-006","ADMIN-SETTINGS","Admin — Settings & RBAC","Super admin cannot be disabled","P1","PENDING","Super admin account cannot be disabled."],
+["ADMIN-SETTINGS-TC-007","ADMIN-SETTINGS","Admin — Settings & RBAC","Permission granularity works","P2","PENDING","Granular permissions (read/write per section) work."],
+["ADMIN-SETTINGS-TC-008","ADMIN-SETTINGS","Admin — Settings & RBAC","App settings saved","P2","PENDING","App settings (OTP channel, etc.) saved correctly."],
+["ADMIN-SETTINGS-TC-009","ADMIN-SETTINGS","Admin — Settings & RBAC","OTP channel switch works","P2","PENDING","Switching OTP channel updates config immediately."],
+["ADMIN-SETTINGS-TC-010","ADMIN-SETTINGS","Admin — Settings & RBAC","Settings visible to super admin only","P1","PENDING","Settings section visible only to super admin."],
+["ADMIN-SETTINGS-TC-011","ADMIN-SETTINGS","Admin — Settings & RBAC","Non-super admin blocked from settings","P1","PENDING","Non-super admin cannot access settings section."],
+["ADMIN-SETTINGS-TC-012","ADMIN-SETTINGS","Admin — Settings & RBAC","Password change works","P2","PENDING","Admin password change saves correctly."],
+["ADMIN-SETTINGS-TC-013","ADMIN-SETTINGS","Admin — Settings & RBAC","Admin activity log access","P2","PENDING","Admins can view activity log per their permissions."],
+["ADMIN-SETTINGS-TC-014","ADMIN-SETTINGS","Admin — Settings & RBAC","Role badge shown on admin list","P2","PENDING","Role badge shown for each admin in list."],
+["ADMIN-SETTINGS-TC-015","ADMIN-SETTINGS","Admin — Settings & RBAC","Last login shown","P3","PENDING","Last login timestamp shown for each admin."],
+["ADMIN-SETTINGS-TC-016","ADMIN-SETTINGS","Admin — Settings & RBAC","Admin user permissions updated","P3","PENDING","Updating admin user permissions takes effect immediately."],
+// ADMIN-LOG
+["ADMIN-LOG-TC-001","ADMIN-LOG","Admin — Activity Log","Log entries shown in reverse order","P1","PENDING","Activity log entries shown in reverse chronological order."],
+["ADMIN-LOG-TC-002","ADMIN-LOG","Admin — Activity Log","Filter by admin user","P2","PENDING","Filtering log by admin user works."],
+["ADMIN-LOG-TC-003","ADMIN-LOG","Admin — Activity Log","Filter by action type","P2","PENDING","Filtering log by action type works."],
+["ADMIN-LOG-TC-004","ADMIN-LOG","Admin — Activity Log","Filter by date range","P2","PENDING","Filtering log by date range works."],
+["ADMIN-LOG-TC-005","ADMIN-LOG","Admin — Activity Log","Approve action logged","P1","PENDING","Approve action logged with timestamp and admin ID."],
+["ADMIN-LOG-TC-006","ADMIN-LOG","Admin — Activity Log","Reject action logged","P1","PENDING","Reject action logged with timestamp and admin ID."],
+["ADMIN-LOG-TC-007","ADMIN-LOG","Admin — Activity Log","Edit action logged","P2","PENDING","Edit action logged with changed fields."],
+["ADMIN-LOG-TC-008","ADMIN-LOG","Admin — Activity Log","Log export works","P2","PENDING","Exporting activity log generates downloadable file."],
+// NOTIF
+["NOTIF-TC-001","NOTIF","Notifications","Push token registered on login","P1","PENDING","Push token registered with server on first login."],
+["NOTIF-TC-002","NOTIF","Notifications","Approval push notification received","P1","PENDING","Approval push notification received on device."],
+["NOTIF-TC-003","NOTIF","Notifications","Rejection push notification received","P1","PENDING","Rejection push notification received on device."],
+["NOTIF-TC-004","NOTIF","Notifications","Seba reminder push notification","P2","PENDING","Seba reminder push notification sent day before duty."],
+["NOTIF-TC-005","NOTIF","Notifications","Notice push notification sent","P2","PENDING","New notice triggers push notification to targets."],
+["NOTIF-TC-006","NOTIF","Notifications","SMS fallback when push fails","P2","PENDING","SMS notification sent when push delivery fails."],
+["NOTIF-TC-007","NOTIF","Notifications","WhatsApp notification delivered","P2","PENDING","WhatsApp notification delivered via configured channel."],
+["NOTIF-TC-008","NOTIF","Notifications","Notification tap navigates correctly","P2","PENDING","Tapping notification navigates to relevant screen."],
+["NOTIF-TC-009","NOTIF","Notifications","Notification preferences saved","P2","PENDING","Notification preferences saved in profile."],
+["NOTIF-TC-010","NOTIF","Notifications","Notification history viewable","P2","PENDING","Notification history viewable in admin dashboard."],
+// OFFLINE
+["OFFLINE-TC-001","OFFLINE","Offline Mode & Caching","Offline banner shown when disconnected","P1","PENDING","Offline banner shown when network is disconnected."],
+["OFFLINE-TC-002","OFFLINE","Offline Mode & Caching","Cached data shown offline","P2","PENDING","Cached profile and schedule data shown when offline."],
+["OFFLINE-TC-003","OFFLINE","Offline Mode & Caching","Actions queued when offline","P2","PENDING","Actions queued when offline and replayed on reconnect."],
+["OFFLINE-TC-004","OFFLINE","Offline Mode & Caching","Auto-sync on reconnect","P2","PENDING","Data auto-syncs when network is restored."],
+["OFFLINE-TC-005","OFFLINE","Offline Mode & Caching","Offline gate modal shown for gated screens","P2","PENDING","Offline gate modal shown for screens requiring live data."],
+["OFFLINE-TC-006","OFFLINE","Offline Mode & Caching","Offline preference persisted","P2","PENDING","Offline mode preference persisted across app restarts."],
+["OFFLINE-TC-007","OFFLINE","Offline Mode & Caching","Cache expiry handled","P2","PENDING","Expired cache handled gracefully with refresh prompt."],
+["OFFLINE-TC-008","OFFLINE","Offline Mode & Caching","Image cache works","P2","PENDING","Profile and event images cached for offline viewing."],
+// I18N
+["I18N-TC-001","I18N","Internationalization","Default language English on first launch","P2","PENDING","App defaults to English on first launch."],
+["I18N-TC-002","I18N","Internationalization","Switch to Odia changes all UI text","P2","PENDING","Switching to Odia changes all translated UI text."],
+["I18N-TC-003","I18N","Internationalization","Language preference persisted","P2","PENDING","Language preference persisted across app restarts."],
+["I18N-TC-004","I18N","Internationalization","Odia font renders correctly","P2","PENDING","Odia font (NotoSansOriya) renders correctly throughout."],
+["I18N-TC-005","I18N","Internationalization","English fallback for untranslated strings","P2","PENDING","Falls back to English for strings without Odia translation."],
+["I18N-TC-006","I18N","Internationalization","RTM and date formats correct in both languages","P3","PENDING","Date formats and number formats correct in both languages."],
+// DB
+["DB-TC-001","DB","Database & RLS Policies","Unauthenticated user cannot read sebayats","P1","PENDING","Unauthenticated user gets no data from sebayats table."],
+["DB-TC-002","DB","Database & RLS Policies","Sebayat can only read own row","P1","PENDING","Authenticated sebayat can only read their own row."],
+["DB-TC-003","DB","Database & RLS Policies","Sebayat cannot read others' rows","P1","PENDING","Sebayat cannot access another sebayat's row."],
+["DB-TC-004","DB","Database & RLS Policies","Admin can read all sebayats","P1","PENDING","Admin user can read all sebayat rows."],
+["DB-TC-005","DB","Database & RLS Policies","Admin can update sebayat rows","P1","PENDING","Admin user can update sebayat rows."],
+["DB-TC-006","DB","Database & RLS Policies","RLS blocks unauthorized table access","P1","PENDING","Unauthorized access to all protected tables blocked by RLS."],
+["DB-TC-007","DB","Database & RLS Policies","Foreign key constraints enforced","P2","PENDING","Foreign key constraints enforced on all related tables."],
+// EDGE
+["EDGE-TC-001","EDGE","Edge Functions","send-otp returns success for valid phone","P1","PENDING","send-otp edge function returns success for valid phone."],
+["EDGE-TC-002","EDGE","Edge Functions","send-otp rate limit blocks excessive calls","P1","PENDING","send-otp rate limit blocks excessive calls within window."],
+["EDGE-TC-003","EDGE","Edge Functions","verify-otp returns valid session","P1","PENDING","verify-otp returns valid session for correct OTP."],
+["EDGE-TC-004","EDGE","Edge Functions","verify-otp rejects wrong OTP","P1","PENDING","verify-otp rejects incorrect OTP with error."],
+["EDGE-TC-005","EDGE","Edge Functions","verify-otp rejects expired OTP","P1","PENDING","verify-otp rejects expired OTP with expiry error."],
+["EDGE-TC-006","EDGE","Edge Functions","resend-otp issues new token","P2","PENDING","resend-otp issues new token and invalidates old one."],
+["EDGE-TC-007","EDGE","Edge Functions","send-notification delivers push","P1","PENDING","send-notification function delivers push notification."],
+["EDGE-TC-008","EDGE","Edge Functions","niti-started triggers session record","P1","PENDING","niti-started function creates seba session record."],
+["EDGE-TC-009","EDGE","Edge Functions","seba-reminders sends on schedule","P2","PENDING","seba-reminders function sends notifications on schedule."],
+["EDGE-TC-010","EDGE","Edge Functions","manage-admin creates/updates admin","P2","PENDING","manage-admin function creates/updates admin correctly."],
+["EDGE-TC-011","EDGE","Edge Functions","Edge function CORS headers correct","P2","PENDING","All edge functions return correct CORS headers."]
+];
+
+// ─────────────────────────────────────────────
+//  MODULE SUMMARY DATA
+// ─────────────────────────────────────────────
+var SUMMARY = [
+  ["Module","Module Name","Total","P1","P2","P3"],
+  ["AUTH","Authentication (OTP)","14","10","4","0"],
+  ["REG","Sebayat Registration","53","24","26","3"],
+  ["HOME","Home Screen","16","8","7","1"],
+  ["PROF","Profile Screen","15","4","11","0"],
+  ["SCHED","Schedule Screen","9","2","6","1"],
+  ["NOTICE","Notice Board","7","2","4","1"],
+  ["ADMIN-SEP","Admin — Sebayat Profiles","31","16","14","1"],
+  ["ADMIN-APP","Admin — Applications","7","0","5","2"],
+  ["ADMIN-SEBA","Admin — Seba Management","19","4","15","0"],
+  ["ADMIN-MGMT","Admin — Notices/Committee/Images","18","2","13","3"],
+  ["ADMIN-SETTINGS","Admin — Settings & RBAC","16","4","10","2"],
+  ["ADMIN-LOG","Admin — Activity Log","8","3","5","0"],
+  ["NOTIF","Notifications","10","3","7","0"],
+  ["OFFLINE","Offline Mode & Caching","8","1","7","0"],
+  ["I18N","Internationalization","6","0","5","1"],
+  ["DB","Database & RLS Policies","7","6","1","0"],
+  ["EDGE","Edge Functions","11","7","4","0"],
+  ["TOTAL","","255","96","144","15"]
+];
+
+function generate() {
+  var btn = document.getElementById('dlBtn');
+  var status = document.getElementById('status');
+  btn.disabled = true;
+  status.textContent = 'Generating workbook…';
+
+  setTimeout(function() {
+    try {
+      var wb = XLSX.utils.book_new();
+
+      // ── Sheet 1: Test Cases ──────────────────
+      var header = [["Test ID","Module Code","Module Name","Test Case Title","Priority","Status","Description"]];
+      var rows = header.concat(TEST_CASES);
+      var ws1 = XLSX.utils.aoa_to_sheet(rows);
+
+      // Column widths
+      ws1['!cols'] = [
+        {wch:20},{wch:14},{wch:34},{wch:46},{wch:10},{wch:10},{wch:90}
+      ];
+
+      // Freeze top row
+      ws1['!freeze'] = {xSplit:0, ySplit:1};
+
+      // Style header row (bold + fill) — basic xlsx supports inline styles via s property
+      var range = XLSX.utils.decode_range(ws1['!ref']);
+      for (var C = range.s.c; C <= range.e.c; C++) {
+        var addr = XLSX.utils.encode_cell({r:0, c:C});
+        if (!ws1[addr]) continue;
+        ws1[addr].s = {
+          font: { bold: true, color: { rgb: "FFFFFF" } },
+          fill: { fgColor: { rgb: "1A3A5C" } },
+          alignment: { horizontal: "center", wrapText: true }
+        };
+      }
+
+      XLSX.utils.book_append_sheet(wb, ws1, 'Test Cases');
+
+      // ── Sheet 2: Module Summary ──────────────
+      var ws2 = XLSX.utils.aoa_to_sheet(SUMMARY);
+      ws2['!cols'] = [{wch:16},{wch:38},{wch:8},{wch:8},{wch:8},{wch:8}];
+      // Header row style
+      for (var C2 = 0; C2 < 6; C2++) {
+        var a2 = XLSX.utils.encode_cell({r:0, c:C2});
+        if (!ws2[a2]) continue;
+        ws2[a2].s = {
+          font: { bold: true, color: { rgb: "FFFFFF" } },
+          fill: { fgColor: { rgb: "1A3A5C" } },
+          alignment: { horizontal: "center" }
+        };
+      }
+      // Total row style (last row)
+      var lastR = SUMMARY.length - 1;
+      for (var C3 = 0; C3 < 6; C3++) {
+        var a3 = XLSX.utils.encode_cell({r:lastR, c:C3});
+        if (!ws2[a3]) continue;
+        ws2[a3].s = {
+          font: { bold: true },
+          fill: { fgColor: { rgb: "E9ECEF" } }
+        };
+      }
+      XLSX.utils.book_append_sheet(wb, ws2, 'Module Summary');
+
+      // ── Sheet 3: P1 Critical ─────────────────
+      var p1Header = [["Test ID","Module Code","Module Name","Test Case Title","Status","Description"]];
+      var p1Rows = TEST_CASES.filter(function(r){ return r[3]==="P1"; })
+        .map(function(r){ return [r[0],r[1],r[2],r[3],r[5],r[6]]; });
+      var ws3 = XLSX.utils.aoa_to_sheet(p1Header.concat(p1Rows));
+      ws3['!cols'] = [{wch:20},{wch:14},{wch:34},{wch:46},{wch:10},{wch:90}];
+      for (var C4 = 0; C4 < 6; C4++) {
+        var a4 = XLSX.utils.encode_cell({r:0, c:C4});
+        if (!ws3[a4]) continue;
+        ws3[a4].s = {
+          font: { bold: true, color: { rgb: "FFFFFF" } },
+          fill: { fgColor: { rgb: "856404" } },
+          alignment: { horizontal: "center" }
+        };
+      }
+      XLSX.utils.book_append_sheet(wb, ws3, 'P1 Critical (' + p1Rows.length + ')');
+
+      // ── Sheet 4: RTM (pivot by module) ───────
+      var rtmHeader = [["Test ID","Module","Feature / Module Name","Test Title","Priority","Status"]];
+      var rtmRows = TEST_CASES.map(function(r){
+        return [r[0], r[1], r[2], r[3], r[4], r[5]];
+      });
+      var ws4 = XLSX.utils.aoa_to_sheet(rtmHeader.concat(rtmRows));
+      ws4['!cols'] = [{wch:20},{wch:14},{wch:36},{wch:46},{wch:10},{wch:10}];
+      for (var C5 = 0; C5 < 6; C5++) {
+        var a5 = XLSX.utils.encode_cell({r:0, c:C5});
+        if (!ws4[a5]) continue;
+        ws4[a5].s = {
+          font: { bold: true, color: { rgb: "FFFFFF" } },
+          fill: { fgColor: { rgb: "1A3A5C" } },
+          alignment: { horizontal: "center" }
+        };
+      }
+      XLSX.utils.book_append_sheet(wb, ws4, 'RTM');
+
+      XLSX.writeFile(wb, 'Pratihari_Nijog_Testing_Plan_v1.0.xlsx');
+      status.textContent = 'Download started! Check your Downloads folder.';
+      btn.disabled = false;
+    } catch(e) {
+      status.textContent = 'Error: ' + e.message;
+      btn.disabled = false;
+    }
+  }, 50);
+}
+
+// Auto-trigger download on page load
+window.onload = function() {
+  setTimeout(generate, 600);
+};
+</script>
+</body>
+</html>

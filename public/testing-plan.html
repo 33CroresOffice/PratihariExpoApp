@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pratihari Nijog — Testing Plan & Traceability Matrix</title>
+  <style>
+    :root {
+      --primary: #1a3a5c;
+      --primary-light: #2d5a8e;
+      --accent: #c8860a;
+      --success: #1e7e34;
+      --warning: #856404;
+      --danger: #721c24;
+      --neutral-50: #f8f9fa;
+      --neutral-100: #f1f3f5;
+      --neutral-200: #e9ecef;
+      --neutral-300: #dee2e6;
+      --neutral-400: #ced4da;
+      --neutral-600: #6c757d;
+      --neutral-700: #495057;
+      --neutral-800: #343a40;
+      --neutral-900: #212529;
+      --p1-bg: #fff3cd;
+      --p1-border: #ffc107;
+      --p1-text: #664d03;
+      --p2-bg: #cfe2ff;
+      --p2-border: #0d6efd;
+      --p2-text: #084298;
+      --p3-bg: #d1e7dd;
+      --p3-border: #198754;
+      --p3-text: #0a3622;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      color: var(--neutral-900);
+      background: var(--neutral-50);
+    }
+
+    /* ── Print ── */
+    @media print {
+      .no-print { display: none !important; }
+      body { background: white; font-size: 11px; }
+      .page-break { page-break-before: always; }
+      .cover { page-break-after: always; }
+      table { font-size: 10px; }
+      h2 { page-break-after: avoid; }
+      tr { page-break-inside: avoid; }
+    }
+
+    /* ── Cover ── */
+    .cover {
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+      color: white;
+      padding: 80px 60px;
+      min-height: 280px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .cover-tag {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      opacity: 0.7;
+      margin-bottom: 16px;
+    }
+    .cover h1 {
+      font-size: 36px;
+      font-weight: 700;
+      line-height: 1.2;
+      margin-bottom: 12px;
+    }
+    .cover-sub {
+      font-size: 18px;
+      opacity: 0.85;
+      margin-bottom: 32px;
+    }
+    .cover-meta {
+      display: flex;
+      gap: 40px;
+      flex-wrap: wrap;
+    }
+    .cover-meta-item label {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      opacity: 0.6;
+      margin-bottom: 4px;
+    }
+    .cover-meta-item span {
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    /* ── Layout ── */
+    .container {
+      max-width: 1300px;
+      margin: 0 auto;
+      padding: 40px 40px 80px;
+    }
+
+    /* ── Print button ── */
+    .print-bar {
+      background: white;
+      border-bottom: 1px solid var(--neutral-200);
+      padding: 12px 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .print-bar-title {
+      font-weight: 600;
+      color: var(--primary);
+      font-size: 13px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 18px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      text-decoration: none;
+      transition: all 0.15s;
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+    .btn-primary:hover { background: var(--primary-light); }
+    .btn-outline {
+      background: white;
+      color: var(--primary);
+      border: 1.5px solid var(--primary);
+    }
+    .btn-outline:hover { background: var(--neutral-100); }
+
+    /* ── Sections ── */
+    .section { margin-bottom: 48px; }
+    h2 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--primary);
+      border-bottom: 2px solid var(--neutral-200);
+      padding-bottom: 10px;
+      margin-bottom: 20px;
+      margin-top: 40px;
+    }
+    h3 {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--neutral-800);
+      margin: 24px 0 12px;
+    }
+
+    /* ── Overview cards ── */
+    .overview-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .stat-card {
+      background: white;
+      border: 1px solid var(--neutral-200);
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+    }
+    .stat-card .num {
+      font-size: 36px;
+      font-weight: 700;
+      color: var(--primary);
+      line-height: 1;
+    }
+    .stat-card .lbl {
+      font-size: 12px;
+      color: var(--neutral-600);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-top: 6px;
+    }
+
+    /* ── Module index table ── */
+    .index-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+      margin-bottom: 32px;
+    }
+    .index-table th {
+      background: var(--primary);
+      color: white;
+      padding: 10px 16px;
+      text-align: left;
+      font-size: 12px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .index-table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--neutral-100);
+      vertical-align: top;
+    }
+    .index-table tr:last-child td { border-bottom: none; }
+    .index-table tr:nth-child(even) td { background: var(--neutral-50); }
+    .module-badge {
+      display: inline-block;
+      background: var(--primary);
+      color: white;
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+    }
+
+    /* ── Test case blocks ── */
+    .tc-block {
+      background: white;
+      border: 1px solid var(--neutral-200);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .tc-block-header {
+      background: var(--neutral-100);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid var(--neutral-200);
+      flex-wrap: wrap;
+    }
+    .tc-id {
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--primary);
+      background: white;
+      border: 1px solid var(--neutral-300);
+      border-radius: 4px;
+      padding: 2px 8px;
+      white-space: nowrap;
+    }
+    .tc-block-header h4 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--neutral-800);
+      flex: 1;
+    }
+    .tc-body { padding: 16px 20px; }
+    .tc-body p {
+      color: var(--neutral-700);
+      line-height: 1.65;
+    }
+
+    /* ── Priority badges ── */
+    .badge {
+      display: inline-block;
+      border-radius: 20px;
+      padding: 2px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+    .badge-p1 { background: var(--p1-bg); color: var(--p1-text); border: 1px solid var(--p1-border); }
+    .badge-p2 { background: var(--p2-bg); color: var(--p2-text); border: 1px solid var(--p2-border); }
+    .badge-p3 { background: var(--p3-bg); color: var(--p3-text); border: 1px solid var(--p3-border); }
+    .badge-pending { background: var(--neutral-200); color: var(--neutral-700); border: 1px solid var(--neutral-400); }
+    .badge-pass { background: #d1e7dd; color: #0a3622; border: 1px solid #198754; }
+    .badge-fail { background: #f8d7da; color: #721c24; border: 1px solid #dc3545; }
+    .badge-blocked { background: #fff3cd; color: #664d03; border: 1px solid #ffc107; }
+    .badge-skipped { background: #e2e3e5; color: #41464b; border: 1px solid #adb5bd; }
+
+    /* ── RTM table ── */
+    .rtm-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      font-size: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .rtm-table th {
+      background: var(--primary);
+      color: white;
+      padding: 10px 12px;
+      text-align: left;
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      white-space: nowrap;
+      position: sticky;
+      top: 56px;
+    }
+    .rtm-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--neutral-100);
+      vertical-align: middle;
+    }
+    .rtm-table tr:last-child td { border-bottom: none; }
+    .rtm-table tr:hover td { background: #f0f4f8; }
+    .rtm-group td {
+      background: var(--neutral-100) !important;
+      font-weight: 700;
+      color: var(--primary);
+      font-size: 12px;
+      letter-spacing: 0.3px;
+      padding: 6px 12px;
+    }
+    .tc-code {
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 11px;
+      color: var(--primary);
+      white-space: nowrap;
+    }
+
+    /* ── Summary stats table ── */
+    .summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .summary-table th {
+      background: var(--primary);
+      color: white;
+      padding: 10px 16px;
+      text-align: left;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .summary-table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--neutral-100);
+    }
+    .summary-table tr:last-child td {
+      background: var(--neutral-100);
+      font-weight: 700;
+      border-bottom: none;
+    }
+    .summary-table td:not(:first-child) { text-align: center; }
+    .summary-table th:not(:first-child) { text-align: center; }
+
+    /* ── Priority legend ── */
+    .priority-legend {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+    .priority-card {
+      padding: 14px 18px;
+      border-radius: 8px;
+      border: 1px solid;
+    }
+    .priority-card.p1 { background: var(--p1-bg); border-color: var(--p1-border); color: var(--p1-text); }
+    .priority-card.p2 { background: var(--p2-bg); border-color: var(--p2-border); color: var(--p2-text); }
+    .priority-card.p3 { background: var(--p3-bg); border-color: var(--p3-border); color: var(--p3-text); }
+    .priority-card strong { display: block; margin-bottom: 4px; font-size: 13px; }
+
+    /* ── TOC ── */
+    .toc {
+      background: white;
+      border: 1px solid var(--neutral-200);
+      border-radius: 10px;
+      padding: 24px;
+      margin-bottom: 40px;
+    }
+    .toc h3 { margin: 0 0 16px; color: var(--primary); }
+    .toc ol { padding-left: 20px; }
+    .toc li { margin-bottom: 6px; }
+    .toc a { color: var(--primary-light); text-decoration: none; }
+    .toc a:hover { text-decoration: underline; }
+
+    /* ── Divider ── */
+    .divider {
+      height: 1px;
+      background: var(--neutral-200);
+      margin: 40px 0;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Print bar -->
+<div class="print-bar no-print">
+  <span class="print-bar-title">Pratihari Nijog — Testing Plan & Traceability Matrix</span>
+  <div style="display:flex;gap:8px">
+    <button class="btn btn-outline" onclick="window.print()">&#128438; Print / Save as PDF</button>
+  </div>
+</div>
+
+<!-- Cover -->
+<div class="cover no-print">
+  <div class="cover-tag">Quality Assurance Document</div>
+  <h1>Pratihari Nijog<br>Testing Plan</h1>
+  <div class="cover-sub">Extensive Test Cases &amp; Requirements Traceability Matrix</div>
+  <div class="cover-meta">
+    <div class="cover-meta-item"><label>System</label><span>Pratihari Nijog App + Admin Dashboard</span></div>
+    <div class="cover-meta-item"><label>Version</label><span>1.0 — May 2026</span></div>
+    <div class="cover-meta-item"><label>Total Test Cases</label><span>255</span></div>
+    <div class="cover-meta-item"><label>Modules Covered</label><span>17</span></div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Overview stats -->
+  <div class="overview-grid">
+    <div class="stat-card"><div class="num">255</div><div class="lbl">Total Test Cases</div></div>
+    <div class="stat-card"><div class="num">17</div><div class="lbl">Modules</div></div>
+    <div class="stat-card"><div class="num" style="color:#856404">96</div><div class="lbl">P1 Critical</div></div>
+    <div class="stat-card"><div class="num" style="color:#084298">144</div><div class="lbl">P2 Important</div></div>
+    <div class="stat-card"><div class="num" style="color:#0a3622">15</div><div class="lbl">P3 Nice-to-Have</div></div>
+    <div class="stat-card"><div class="num" style="color:#6c757d">329</div><div class="lbl">Automated Tests</div></div>
+  </div>
+
+  <!-- TOC -->
+  <div class="toc no-print">
+    <h3>Table of Contents</h3>
+    <ol>
+      <li><a href="#module-index">Module Index</a></li>
+      <li><a href="#priority-guide">Priority Guide</a></li>
+      <li><a href="#tc-auth">1. Authentication (AUTH)</a></li>
+      <li><a href="#tc-reg">2. Registration (REG)</a></li>
+      <li><a href="#tc-home">3. Home Screen (HOME)</a></li>
+      <li><a href="#tc-prof">4. Profile (PROF)</a></li>
+      <li><a href="#tc-sched">5. Schedule (SCHED)</a></li>
+      <li><a href="#tc-notice">6. Notice Board (NOTICE)</a></li>
+      <li><a href="#tc-admin-sep">7. Admin — Sebayat Profiles (ADMIN-SEP)</a></li>
+      <li><a href="#tc-admin-app">8. Admin — Applications (ADMIN-APP)</a></li>
+      <li><a href="#tc-admin-seba">9. Admin — Seba Management (ADMIN-SEBA)</a></li>
+      <li><a href="#tc-admin-mgmt">10. Admin — Management (ADMIN-MGMT)</a></li>
+      <li><a href="#tc-admin-settings">11. Admin — Settings &amp; RBAC (ADMIN-SETTINGS)</a></li>
+      <li><a href="#tc-admin-log">12. Admin — Activity Log (ADMIN-LOG)</a></li>
+      <li><a href="#tc-notif">13. Notifications (NOTIF)</a></li>
+      <li><a href="#tc-offline">14. Offline Mode (OFFLINE)</a></li>
+      <li><a href="#tc-i18n">15. Internationalization (I18N)</a></li>
+      <li><a href="#tc-db">16. Database &amp; RLS (DB)</a></li>
+      <li><a href="#tc-edge">17. Edge Functions (EDGE)</a></li>
+      <li><a href="#rtm">Requirements Traceability Matrix (RTM)</a></li>
+      <li><a href="#summary">Summary Statistics</a></li>
+    </ol>
+  </div>
+
+  <!-- Module Index -->
+  <h2 id="module-index">Module Index</h2>
+  <table class="index-table">
+    <thead><tr><th>Module ID</th><th>Module Name</th><th>Test Cases</th><th>Scope</th></tr></thead>
+    <tbody>
+      <tr><td><span class="module-badge">AUTH</span></td><td>Authentication (OTP)</td><td>14</td><td>Mobile App</td></tr>
+      <tr><td><span class="module-badge">REG</span></td><td>Sebayat Registration</td><td>53</td><td>Mobile App</td></tr>
+      <tr><td><span class="module-badge">HOME</span></td><td>Home Screen</td><td>16</td><td>Mobile App</td></tr>
+      <tr><td><span class="module-badge">PROF</span></td><td>Profile Screen</td><td>15</td><td>Mobile App</td></tr>
+      <tr><td><span class="module-badge">SCHED</span></td><td>Schedule Screen</td><td>9</td><td>Mobile App</td></tr>
+      <tr><td><span class="module-badge">NOTICE</span></td><td>Notice Board</td><td>7</td><td>Mobile App</td></tr>
+      <tr><td><span class="module-badge">ADMIN-SEP</span></td><td>Admin — Sebayat Profiles</td><td>31</td><td>Admin Dashboard</td></tr>
+      <tr><td><span class="module-badge">ADMIN-APP</span></td><td>Admin — Applications</td><td>7</td><td>Admin Dashboard</td></tr>
+      <tr><td><span class="module-badge">ADMIN-SEBA</span></td><td>Admin — Seba Management</td><td>19</td><td>Admin Dashboard</td></tr>
+      <tr><td><span class="module-badge">ADMIN-MGMT</span></td><td>Admin — Notices, Committee, Images</td><td>18</td><td>Admin Dashboard</td></tr>
+      <tr><td><span class="module-badge">ADMIN-SETTINGS</span></td><td>Admin — Settings &amp; RBAC</td><td>16</td><td>Admin Dashboard</td></tr>
+      <tr><td><span class="module-badge">ADMIN-LOG</span></td><td>Admin — Activity Log</td><td>8</td><td>Admin Dashboard</td></tr>
+      <tr><td><span class="module-badge">NOTIF</span></td><td>Notifications (Push/SMS/WhatsApp)</td><td>10</td><td>Backend + App</td></tr>
+      <tr><td><span class="module-badge">OFFLINE</span></td><td>Offline Mode &amp; Caching</td><td>8</td><td>Mobile App</td></tr>
+      <tr><td><span class="module-badge">I18N</span></td><td>Internationalization (English/Odia)</td><td>6</td><td>Mobile App</td></tr>
+      <tr><td><span class="module-badge">DB</span></td><td>Database &amp; RLS Policies</td><td>7</td><td>Supabase</td></tr>
+      <tr><td><span class="module-badge">EDGE</span></td><td>Edge Functions</td><td>11</td><td>Supabase Edge</td></tr>
+    </tbody>
+  </table>
+
+  <!-- Priority Guide -->
+  <h2 id="priority-guide">Priority Guide</h2>
+  <div class="priority-legend">
+    <div class="priority-card p1">
+      <strong>P1 — Critical (96 tests)</strong>
+      Core functionality or security. Must pass before any release. Failures block deployment.
+    </div>
+    <div class="priority-card p2">
+      <strong>P2 — Important (144 tests)</strong>
+      Key features covering most use-cases. Must pass before production release.
+    </div>
+    <div class="priority-card p3">
+      <strong>P3 — Nice to Have (15 tests)</strong>
+      Edge cases and cosmetic details. Target for post-launch polish.
+    </div>
+  </div>
+
+  <!-- ─── AUTH ─── -->
+  <h2 id="tc-auth">1. Authentication Module (AUTH)</h2>
+
+  <div class="tc-block">
+    <div class="tc-block-header"><span class="tc-id">AUTH-TC-001</span><h4>Valid phone triggers OTP</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div>
+    <div class="tc-body"><p>Enter valid 10-digit Indian mobile number, tap "Request OTP" — OTP sent via configured channel, OTP screen shown.</p></div>
+  </div>
+  <div class="tc-block">
+    <div class="tc-block-header"><span class="tc-id">AUTH-TC-002</span><h4>Short phone blocked</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div>
+    <div class="tc-body"><p>Enter phone number with less than 10 digits — validation error shown, OTP not sent.</p></div>
+  </div>
+  <div class="tc-block">
+    <div class="tc-block-header"><span class="tc-id">AUTH-TC-003</span><h4>Non-numeric blocked</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div>
+    <div class="tc-body"><p>Enter phone number with non-numeric characters — blocked at input, error shown.</p></div>
+  </div>
+  <div class="tc-block">
+    <div class="tc-block-header"><span class="tc-id">AUTH-TC-004</span><h4>WhatsApp channel delivers</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div>
+    <div class="tc-body"><p>Select WhatsApp channel, request OTP — OTP delivered to WhatsApp.</p></div>
+  </div>
+  <div class="tc-block">
+    <div class="tc-block-header"><span class="tc-id">AUTH-TC-005</span><h4>SMS channel delivers</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div>
+    <div class="tc-body"><p>Select SMS channel, request OTP — OTP delivered via SMS.</p></div>
+  </div>
+  <div class="tc-block">
+    <div class="tc-block-header"><span class="tc-id">AUTH-TC-006</span><h4>Correct OTP authenticates</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div>
+    <div class="tc-body"><p>Enter correct 6-digit OTP within expiry window — user authenticated, redirected to home/registration.</p></div>
+  </div>
+  <div class="tc-block">
+    <div class="tc-block-header"><span class="tc-id">AUTH-TC-007</span><h4>Wrong OTP shows error</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div>
+    <div class="tc-body"><p>Enter incorrect OTP — error message shown, retry allowed.</p></div>
+  </div>
+  <div class="tc-block">
+    <div class="tc-block-header"><span class="tc-id">AUTH-TC-008</span><h4>Expired OTP shows error</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div>
+    <div class="tc-body"><p>Enter OTP after expiry time — expired error shown, resend button offered.</p></div>
+  </div>
+  <div class="tc-block">
+    <div class="tc-block-header"><span class="tc-id">AUTH-TC-009</span><h4>Resend resets timer</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div>
+    <div class="tc-body"><p>Tap "Resend OTP" — new OTP sent, timer resets.</p></div>
+  </div>
+  <div class="tc-block">
+    <div class="tc-block-header"><span class="tc-id">AUTH-TC-010</span><h4>OTP rate limit enforced</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div>
+    <div class="tc-body"><p>Request OTP more than allowed times in short window — rate limit error shown.</p></div>
+  </div>
+  <div class="tc-block">
+    <div class="tc-block-header"><span class="tc-id">AUTH-TC-011</span><h4>New user profile created</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div>
+    <div class="tc-body"><p>First-time user — after OTP verification, new sebayat row created, redirected to registration.</p></div>
+  </div>
+  <div class="tc-block">
+    <div class="tc-block-header"><span class="tc-id">AUTH-TC-012</span><h4>Returning user profile loaded</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div>
+    <div class="tc-body"><p>Returning user — after OTP verification, existing profile loaded, redirected to home.</p></div>
+  </div>
+  <div class="tc-block">
+    <div class="tc-block-header"><span class="tc-id">AUTH-TC-013</span><h4>Session cleared on logout</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div>
+    <div class="tc-body"><p>Sign out — session cleared, redirected to phone login screen.</p></div>
+  </div>
+  <div class="tc-block">
+    <div class="tc-block-header"><span class="tc-id">AUTH-TC-014</span><h4>Protected route redirects to login</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div>
+    <div class="tc-body"><p>Deep link or refresh on protected route without session — redirected to login.</p></div>
+  </div>
+
+  <!-- ─── REG ─── -->
+  <h2 id="tc-reg">2. Sebayat Registration Module (REG)</h2>
+  <h3>Step 1 — Personal Details</h3>
+
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-001</span><h4>All required fields passes validation</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Submit with all required fields filled — advances to step 2.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-002</span><h4>First name required error</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Submit with First Name empty — "Required" error shown on field.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-003</span><h4>Last name required error</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Submit with Last Name empty — "Required" error shown on field.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-004</span><h4>DOB required error</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Submit with Date of Birth empty — "Required" error shown.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-005</span><h4>Gender required error</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Submit with Gender not selected — "Please select" error shown.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-006</span><h4>Health card required error</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Submit with Health Card Number empty — "Required" error shown.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-007</span><h4>Profile photo upload</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Upload profile photo — image picker opens, photo selected, thumbnail shown.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-008</span><h4>Health card photo upload</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Upload health card photo — image picker opens, photo uploaded, URL stored.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-009</span><h4>Bhagari toggle</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Toggle "Is Bhagari" — state toggled correctly.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-010</span><h4>Baristha toggle</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Toggle "Is Baristha Bhai Pua" — state toggled correctly.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-011</span><h4>DOB date picker format</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Date of Birth picker — selects valid date, displays in DD/MM/YYYY format.</p></div></div>
+
+  <h3>Step 2 — Contact &amp; IDs</h3>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-012</span><h4>Primary phone pre-filled</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Primary phone pre-filled from auth — correct number shown, login number badge shown.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-013</span><h4>Add valid extra phone</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Add extra phone number with valid 10-digit number — added to list.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-014</span><h4>Invalid extra phone error</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Add extra phone number with invalid digits — validation error shown.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-015</span><h4>Remove extra phone</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Remove an extra phone number — removed from list.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-016</span><h4>WhatsApp same-as-primary</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>WhatsApp "Same as Primary" toggle — WhatsApp field disabled, copies primary number.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-017</span><h4>Add identity document</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Add identity document, select type, upload photo — document added to list.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-018</span><h4>No ID document error</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Submit with no identity document — "At least one identity card required" error.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-019</span><h4>ID without type error</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Add identity document without selecting type — "Please select ID type" error.</p></div></div>
+
+  <h3>Steps 3–7 &amp; Submission</h3>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-020</span><h4>Bansa name selection</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Select bansa name from dropdown — selection saved.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-021</span><h4>Seba name selection</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Select seba name from dropdown — selection saved.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-022</span><h4>Joining date toggle</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Toggle "Exact Date" vs "Year only" for joining date — correct field shown.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-023</span><h4>Joining year format</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Enter joining year in YYYY format — accepted and stored.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-024</span><h4>Father name required</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Submit with Father Name empty — "Required" error.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-025</span><h4>Mother name required</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Submit with Mother Name empty — "Required" error.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-026</span><h4>Marital status required</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Submit with Marital Status not selected — "Please select" error.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-027</span><h4>Married: spouse name required</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Select "Married" — spouse fields appear; submit with spouse name empty — error shown.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-028</span><h4>Non-married: spouse fields hidden</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Select marital status other than Married — spouse fields hidden, no validation on spouse.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-029</span><h4>Add child</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Add a child — child row added with name, DOB, gender, marital status, photo.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-030</span><h4>Remove child</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Remove a child — child removed from list.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-031</span><h4>Father search &amp; link</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Search for father by name — autocomplete list appears, select father — ID linked.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-032</span><h4>Sahi required error</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Submit with Sahi/Lane empty — "Required" error.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-033</span><h4>Invalid pincode error</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Submit with Pincode as 5 digits — "6-digit PIN required" error.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-034</span><h4>District/state required</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Submit with District/State empty — "Required" error.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-035</span><h4>Current address toggle</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Toggle "Current address is different" — current address fields appear.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-036</span><h4>Both addresses saved</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Fill both permanent and current addresses — both saved correctly.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-037</span><h4>No occupation allowed</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Submit without any occupation — allowed (occupations optional).</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-038</span><h4>Add occupation</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Add occupation with name — occupation added to list.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-039</span><h4>Joining year required</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Submit with Joining Year/Date empty — "Required" error shown.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-040</span><h4>Facebook URL saved</h4><span class="badge badge-p3">P3</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Enter Facebook URL — saved in social_facebook field.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-041</span><h4>Empty socials allowed</h4><span class="badge badge-p3">P3</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Leave all social fields empty — submission not blocked (all optional).</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-042</span><h4>Confirmation modal shown</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Complete all steps, tap "Submit for Approval" — confirmation modal shown.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-043</span><h4>Submitted status saved</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Confirm submission — sebayat row saved with status "submitted", success screen shown.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-044</span><h4>Draft restored on re-entry</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Re-enter registration after partial completion — draft restored from session storage.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-045</span><h4>Back preserves data</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Navigate Back through steps — previous step shown with data preserved.</p></div></div>
+
+  <h3>Change Request Flow</h3>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-046</span><h4>Home shows section count badge</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Admin requests 4 sections changed — mobile shows "4 sections" badge on home CTA.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-047</span><h4>Opens multi-section stepper</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Tap "Update Application" — opens Update &amp; Resubmit with multi-section stepper.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-048</span><h4>Admin remarks on every section</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Admin remarks shown as warning banner on every requested section.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-049</span><h4>Next Section advances stepper</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Complete first section, tap "Next Section" — advances to next requested section, stepper dot filled.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-050</span><h4>Back between sections works</h4><span class="badge badge-p2">P2</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Tap Back on section 2 — returns to section 1.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-051</span><h4>Last section shows Resubmit</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>On last section, button shows "Resubmit" — tap Resubmit submits all changes.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-052</span><h4>After resubmit — status resubmitted</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>After resubmit — status changes to "resubmitted", home shows "Resubmitted" card, no admin-remarks warning.</p></div></div>
+  <div class="tc-block"><div class="tc-block-header"><span class="tc-id">REG-TC-053</span><h4>Single section — immediate Resubmit</h4><span class="badge badge-p1">P1</span><span class="badge badge-pending">PENDING</span></div><div class="tc-body"><p>Admin requests 1 section — stepper shows 1/1, button immediately shows "Resubmit".</p></div></div>
+
+  <!-- Remaining modules as compact lists for brevity in HTML -->
+  <h2 id="tc-home">3. Home Screen (HOME) — 16 Test Cases</h2>
+  <table class="index-table">
+    <thead><tr><th>ID</th><th>Description</th><th>Priority</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td class="tc-code">HOME-TC-001</td><td>No registration — Complete CTA shown</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">HOME-TC-002</td><td>Draft — Complete CTA shown</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">HOME-TC-003</td><td>Submitted — Under Review card</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">HOME-TC-004</td><td>Changes requested — badge count shown</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">HOME-TC-005</td><td>Resubmitted card shown with blue styling</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">HOME-TC-006</td><td>Approved — full dashboard shown</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">HOME-TC-007</td><td>Today's beddha numbers shown</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">HOME-TC-008</td><td>Update Application navigates correctly</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">HOME-TC-009</td><td>Unread notice count badge shown</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">HOME-TC-010</td><td>Startup notice modal appears with carousel</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">HOME-TC-011</td><td>Next/Done navigates carousel</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">HOME-TC-012</td><td>Active seba session with timer shown</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">HOME-TC-013</td><td>Completed session with duration shown</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">HOME-TC-014</td><td>Tap duty card navigates to schedule</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">HOME-TC-015</td><td>Carousel images auto-rotate</td><td><span class="badge badge-p3">P3</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">HOME-TC-016</td><td>Avatar tap navigates to profile</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="tc-prof">4. Profile (PROF) — 15 Test Cases</h2>
+  <table class="index-table"><thead><tr><th>ID</th><th>Description</th><th>Priority</th><th>Status</th></tr></thead><tbody>
+    <tr><td class="tc-code">PROF-TC-001</td><td>All personal details shown correctly</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">PROF-TC-002</td><td>Photo shown or initials fallback</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">PROF-TC-003</td><td>Registration number shown if approved</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">PROF-TC-004</td><td>All phones and email shown</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">PROF-TC-005</td><td>Documents with type and photo shown</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">PROF-TC-006</td><td>Spouse shown only if married</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">PROF-TC-007</td><td>Current address conditional display</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">PROF-TC-008</td><td>Nijog assignments shown</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">PROF-TC-009</td><td>Switch to Odia re-renders UI</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">PROF-TC-010</td><td>Switch back to English works</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">PROF-TC-011</td><td>Toggle enables offline mode</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">PROF-TC-012</td><td>Sync Now pulls fresh data</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">PROF-TC-013</td><td>Clear Cache removes local data</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">PROF-TC-014</td><td>Edit button navigates to register</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">PROF-TC-015</td><td>Sign out clears session</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+  </tbody></table>
+
+  <h2 id="tc-sched">5. Schedule (SCHED) — 9 Test Cases</h2>
+  <table class="index-table"><thead><tr><th>ID</th><th>Description</th><th>Priority</th><th>Status</th></tr></thead><tbody>
+    <tr><td class="tc-code">SCHED-TC-001</td><td>Current month calendar shown with today highlighted</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">SCHED-TC-002</td><td>Duty dates marked on calendar</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">SCHED-TC-003</td><td>Tap date shows duty details</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">SCHED-TC-004</td><td>Month navigation works</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">SCHED-TC-005</td><td>Future duty shown</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">SCHED-TC-006</td><td>Jump to specific date works</td><td><span class="badge badge-p3">P3</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">SCHED-TC-007</td><td>Past duties with duration shown</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">SCHED-TC-008</td><td>Upcoming duty shown</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">SCHED-TC-009</td><td>Non-approved user blocked from Schedule tab</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+  </tbody></table>
+
+  <h2 id="tc-notice">6. Notice Board (NOTICE) — 7 Test Cases</h2>
+  <table class="index-table"><thead><tr><th>ID</th><th>Description</th><th>Priority</th><th>Status</th></tr></thead><tbody>
+    <tr><td class="tc-code">NOTICE-TC-001</td><td>Notices in reverse chronological order</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">NOTICE-TC-002</td><td>Pinned notices at top</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">NOTICE-TC-003</td><td>Tap opens full notice detail</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">NOTICE-TC-004</td><td>Mark read decrements unread counter</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">NOTICE-TC-005</td><td>Odia content shown in Odia mode</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">NOTICE-TC-006</td><td>English fallback when no Odia translation</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    <tr><td class="tc-code">NOTICE-TC-007</td><td>Category filter works correctly</td><td><span class="badge badge-p3">P3</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+  </tbody></table>
+
+  <div class="page-break"></div>
+
+  <!-- ─── RTM ─── -->
+  <h2 id="rtm">Requirements Traceability Matrix (RTM)</h2>
+  <p style="margin-bottom:16px;color:var(--neutral-600)">Master matrix linking every test case to its module, feature, priority, and current status. Update the Status column as testing progresses.</p>
+
+  <table class="rtm-table">
+    <thead>
+      <tr>
+        <th>Test ID</th>
+        <th>Module</th>
+        <th>Feature</th>
+        <th>Description</th>
+        <th>P</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="rtm-group"><td colspan="6">AUTH — Authentication</td></tr>
+      <tr><td class="tc-code">AUTH-TC-001</td><td>AUTH</td><td>OTP Request</td><td>Valid phone triggers OTP</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">AUTH-TC-002</td><td>AUTH</td><td>OTP Request</td><td>Short phone blocked</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">AUTH-TC-003</td><td>AUTH</td><td>OTP Request</td><td>Non-numeric blocked</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">AUTH-TC-004</td><td>AUTH</td><td>OTP Channel</td><td>WhatsApp channel delivers</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">AUTH-TC-005</td><td>AUTH</td><td>OTP Channel</td><td>SMS channel delivers</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">AUTH-TC-006</td><td>AUTH</td><td>OTP Verify</td><td>Correct OTP authenticates</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">AUTH-TC-007</td><td>AUTH</td><td>OTP Verify</td><td>Wrong OTP shows error</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">AUTH-TC-008</td><td>AUTH</td><td>OTP Verify</td><td>Expired OTP shows error</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">AUTH-TC-009</td><td>AUTH</td><td>OTP Resend</td><td>Resend resets timer</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">AUTH-TC-010</td><td>AUTH</td><td>Rate Limit</td><td>OTP rate limit enforced</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">AUTH-TC-011</td><td>AUTH</td><td>New User</td><td>New user profile created</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">AUTH-TC-012</td><td>AUTH</td><td>Returning User</td><td>Existing profile loaded</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">AUTH-TC-013</td><td>AUTH</td><td>Sign Out</td><td>Session cleared on logout</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">AUTH-TC-014</td><td>AUTH</td><td>Route Guard</td><td>Protected route redirects to login</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+
+      <tr class="rtm-group"><td colspan="6">REG — Registration (53 cases)</td></tr>
+      <tr><td class="tc-code">REG-TC-001</td><td>REG</td><td>Step 1</td><td>All required fields passes validation</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">REG-TC-002–006</td><td>REG</td><td>Step 1</td><td>Required field validations (first name, last name, DOB, gender, health card)</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">REG-TC-007–011</td><td>REG</td><td>Step 1</td><td>Photo upload, toggles, date picker</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">REG-TC-012–019</td><td>REG</td><td>Step 2</td><td>Contact &amp; ID documents validation</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">REG-TC-020–023</td><td>REG</td><td>Step 3</td><td>Seba Heritage — bansa, seba, joining date</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">REG-TC-024–031</td><td>REG</td><td>Step 4</td><td>Family — parents, marital status, children, father search</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">REG-TC-032–036</td><td>REG</td><td>Step 5</td><td>Address — sahi, pincode, district, current address</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">REG-TC-037–039</td><td>REG</td><td>Step 6</td><td>Occupation &amp; joining year</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">REG-TC-040–041</td><td>REG</td><td>Step 7</td><td>Social profiles (optional)</td><td><span class="badge badge-p3">P3</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">REG-TC-042–045</td><td>REG</td><td>Submit</td><td>Final submission, draft restore, back navigation</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">REG-TC-046–053</td><td>REG</td><td>Change Request</td><td>Multi-section stepper, remarks banner, resubmit flow</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+
+      <tr class="rtm-group"><td colspan="6">HOME — Home Screen (16 cases)</td></tr>
+      <tr><td class="tc-code">HOME-TC-001–008</td><td>HOME</td><td>Status CTA</td><td>All 6 status states + beddha + navigation</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">HOME-TC-009–016</td><td>HOME</td><td>Features</td><td>Notices, startup modal, sessions, carousel, avatar</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+
+      <tr class="rtm-group"><td colspan="6">PROF — Profile (15 cases)</td></tr>
+      <tr><td class="tc-code">PROF-TC-001–008</td><td>PROF</td><td>Data Display</td><td>Personal, photo, reg no, contacts, docs, family, address, seba</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">PROF-TC-009–015</td><td>PROF</td><td>Actions</td><td>Language toggle, offline, sync, clear cache, edit, sign out</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+
+      <tr class="rtm-group"><td colspan="6">SCHED — Schedule (9 cases)</td></tr>
+      <tr><td class="tc-code">SCHED-TC-001–009</td><td>SCHED</td><td>Calendar</td><td>Calendar display, duty marks, navigation, history, access guard</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+
+      <tr class="rtm-group"><td colspan="6">NOTICE — Notice Board (7 cases)</td></tr>
+      <tr><td class="tc-code">NOTICE-TC-001–007</td><td>NOTICE</td><td>Board</td><td>Order, pin, detail, read receipt, Odia, fallback, filter</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+
+      <tr class="rtm-group"><td colspan="6">ADMIN-SEP — Admin Sebayat Profiles (31 cases)</td></tr>
+      <tr><td class="tc-code">ADMIN-SEP-TC-001–008</td><td>ADMIN-SEP</td><td>Search &amp; Filter</td><td>Real-time search LTR, by name/phone/reg, status tabs, counts</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">ADMIN-SEP-TC-009–013</td><td>ADMIN-SEP</td><td>Approve</td><td>Approve modal, reg number, without reg, bulk approve</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">ADMIN-SEP-TC-014–016</td><td>ADMIN-SEP</td><td>Reject</td><td>Reject modal, remarks required, reject saved</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">ADMIN-SEP-TC-017–022</td><td>ADMIN-SEP</td><td>Changes</td><td>Checkboxes, auto-populate remarks, all sections saved to array</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">ADMIN-SEP-TC-023–031</td><td>ADMIN-SEP</td><td>View/Add/Manage</td><td>Profile modal, all data, photos, add form, edit &amp; save</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+
+      <tr class="rtm-group"><td colspan="6">ADMIN-APP — Applications (7 cases)</td></tr>
+      <tr><td class="tc-code">ADMIN-APP-TC-001–007</td><td>ADMIN-APP</td><td>Applications</td><td>List, filter, view, status change, comment, types</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+
+      <tr class="rtm-group"><td colspan="6">ADMIN-SEBA — Seba Management (19 cases)</td></tr>
+      <tr><td class="tc-code">ADMIN-SEBA-TC-001–005</td><td>ADMIN-SEBA</td><td>Seba Today</td><td>Roster, absent, start/end session, notes</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">ADMIN-SEBA-TC-006–009</td><td>ADMIN-SEBA</td><td>Calendar</td><td>Month nav, past roster, anchor edit, history</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">ADMIN-SEBA-TC-010–019</td><td>ADMIN-SEBA</td><td>History/Nijog/Assign/Cat</td><td>Date filter, status filter, search, assignments, categories</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+
+      <tr class="rtm-group"><td colspan="6">ADMIN-MGMT — Notices, Committee, Images (18 cases)</td></tr>
+      <tr><td class="tc-code">ADMIN-MGMT-TC-001–009</td><td>ADMIN-MGMT</td><td>Notices</td><td>Create, bilingual, publish, schedule, pin, target, SMS, delete, receipts</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">ADMIN-MGMT-TC-010–014</td><td>ADMIN-MGMT</td><td>Committees</td><td>Create, add/edit/remove member, inactive</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">ADMIN-MGMT-TC-015–018</td><td>ADMIN-MGMT</td><td>Event Images</td><td>Upload, reorder, inactive, delete</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+
+      <tr class="rtm-group"><td colspan="6">ADMIN-SETTINGS — Settings &amp; RBAC (16 cases)</td></tr>
+      <tr><td class="tc-code">ADMIN-SETTINGS-TC-001–004</td><td>ADMIN-SETTINGS</td><td>Admins</td><td>Add, assign role, disable, delete</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">ADMIN-SETTINGS-TC-005–009</td><td>ADMIN-SETTINGS</td><td>Roles/RBAC</td><td>System roles, edit permissions, overrides, Moderator/Viewer enforcement</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">ADMIN-SETTINGS-TC-010–016</td><td>ADMIN-SETTINGS</td><td>OTP/Push/Notif</td><td>SMS/WA toggle, push mode, event config, templates, log, date filter</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+
+      <tr class="rtm-group"><td colspan="6">ADMIN-LOG — Activity Log (8 cases)</td></tr>
+      <tr><td class="tc-code">ADMIN-LOG-TC-001–008</td><td>ADMIN-LOG</td><td>Log</td><td>Approve/reject/CR logged, filter by action/admin/date, CSV export, diff</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+
+      <tr class="rtm-group"><td colspan="6">NOTIF — Notifications (10 cases)</td></tr>
+      <tr><td class="tc-code">NOTIF-TC-001–010</td><td>NOTIF</td><td>Push/SMS/Admin</td><td>Approved/rejected/changes push, admin bell, notice targets, token, SMS phone, error log, seba reminder</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+
+      <tr class="rtm-group"><td colspan="6">OFFLINE — Offline Mode (8 cases)</td></tr>
+      <tr><td class="tc-code">OFFLINE-TC-001–008</td><td>OFFLINE</td><td>Cache</td><td>Enable cache, banner, profile/duty from cache, sync, clear, reconnect, write block</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+
+      <tr class="rtm-group"><td colspan="6">I18N — Internationalization (6 cases)</td></tr>
+      <tr><td class="tc-code">I18N-TC-001–006</td><td>I18N</td><td>Language</td><td>Odia labels, English labels, notice Odia/fallback, font, persistence</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+
+      <tr class="rtm-group"><td colspan="6">DB — Database &amp; RLS (7 cases)</td></tr>
+      <tr><td class="tc-code">DB-TC-001</td><td>DB</td><td>RLS</td><td>User reads only own sebayat row</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">DB-TC-002</td><td>DB</td><td>RLS</td><td>User cannot read another user's row</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">DB-TC-003</td><td>DB</td><td>RLS</td><td>Service role reads all rows</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">DB-TC-004</td><td>DB</td><td>RLS</td><td>Unauthenticated request blocked</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">DB-TC-005</td><td>DB</td><td>Upsert</td><td>Submit saves all fields correctly incl. change_sections=null</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">DB-TC-006</td><td>DB</td><td>Schema</td><td>change_sections text[] persists and reads correctly</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">DB-TC-007</td><td>DB</td><td>History</td><td>Review history entry created on every admin status change</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+
+      <tr class="rtm-group"><td colspan="6">EDGE — Edge Functions (11 cases)</td></tr>
+      <tr><td class="tc-code">EDGE-TC-001</td><td>EDGE</td><td>send-otp</td><td>Valid phone returns 200, OTP session created</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">EDGE-TC-002</td><td>EDGE</td><td>send-otp</td><td>Invalid phone format returns 400</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">EDGE-TC-003</td><td>EDGE</td><td>send-otp</td><td>Rate limit returns 429</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">EDGE-TC-004</td><td>EDGE</td><td>verify-otp</td><td>Correct OTP returns auth token</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">EDGE-TC-005</td><td>EDGE</td><td>verify-otp</td><td>Wrong OTP returns 401</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">EDGE-TC-006</td><td>EDGE</td><td>verify-otp</td><td>Expired OTP returns 401</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">EDGE-TC-007</td><td>EDGE</td><td>resend-otp</td><td>Cooldown enforced</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">EDGE-TC-008</td><td>EDGE</td><td>send-notification</td><td>Valid event dispatches to correct channels</td><td><span class="badge badge-p1">P1</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">EDGE-TC-009</td><td>EDGE</td><td>send-notification</td><td>Disabled channel skipped, others sent</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">EDGE-TC-010</td><td>EDGE</td><td>manage-admin</td><td>Create admin with valid payload saves row</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+      <tr><td class="tc-code">EDGE-TC-011</td><td>EDGE</td><td>seba-reminders</td><td>Cron queries upcoming seba dates and sends reminders</td><td><span class="badge badge-p2">P2</span></td><td><span class="badge badge-pending">PENDING</span></td></tr>
+    </tbody>
+  </table>
+
+  <!-- ─── Summary ─── -->
+  <div class="page-break"></div>
+  <h2 id="summary">Summary Statistics</h2>
+  <table class="summary-table">
+    <thead>
+      <tr><th>Module</th><th>Total</th><th>P1</th><th>P2</th><th>P3</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>AUTH — Authentication</td><td>14</td><td>10</td><td>4</td><td>0</td></tr>
+      <tr><td>REG — Registration</td><td>53</td><td>24</td><td>26</td><td>3</td></tr>
+      <tr><td>HOME — Home Screen</td><td>16</td><td>8</td><td>7</td><td>1</td></tr>
+      <tr><td>PROF — Profile</td><td>15</td><td>4</td><td>11</td><td>0</td></tr>
+      <tr><td>SCHED — Schedule</td><td>9</td><td>2</td><td>6</td><td>1</td></tr>
+      <tr><td>NOTICE — Notice Board</td><td>7</td><td>2</td><td>4</td><td>1</td></tr>
+      <tr><td>ADMIN-SEP — Sebayat Profiles</td><td>31</td><td>16</td><td>14</td><td>1</td></tr>
+      <tr><td>ADMIN-APP — Applications</td><td>7</td><td>0</td><td>5</td><td>2</td></tr>
+      <tr><td>ADMIN-SEBA — Seba Management</td><td>19</td><td>4</td><td>15</td><td>0</td></tr>
+      <tr><td>ADMIN-MGMT — Notices/Committee/Images</td><td>18</td><td>2</td><td>13</td><td>3</td></tr>
+      <tr><td>ADMIN-SETTINGS — Settings &amp; RBAC</td><td>16</td><td>4</td><td>10</td><td>2</td></tr>
+      <tr><td>ADMIN-LOG — Activity Log</td><td>8</td><td>3</td><td>5</td><td>0</td></tr>
+      <tr><td>NOTIF — Notifications</td><td>10</td><td>3</td><td>7</td><td>0</td></tr>
+      <tr><td>OFFLINE — Offline Mode</td><td>8</td><td>1</td><td>7</td><td>0</td></tr>
+      <tr><td>I18N — Internationalization</td><td>6</td><td>0</td><td>5</td><td>1</td></tr>
+      <tr><td>DB — Database &amp; RLS</td><td>7</td><td>6</td><td>1</td><td>0</td></tr>
+      <tr><td>EDGE — Edge Functions</td><td>11</td><td>7</td><td>4</td><td>0</td></tr>
+      <tr><td><strong>TOTAL</strong></td><td><strong>255</strong></td><td><strong>96</strong></td><td><strong>144</strong></td><td><strong>15</strong></td></tr>
+    </tbody>
+  </table>
+
+  <div style="margin-top:48px;padding:24px;background:white;border-radius:10px;border:1px solid var(--neutral-200);color:var(--neutral-600);font-size:12px;text-align:center;">
+    Pratihari Nijog — Testing Plan v1.0 &nbsp;|&nbsp; Generated 22 May 2026 &nbsp;|&nbsp; 255 test cases across 17 modules
+  </div>
+
+</div>
+
+<script>
+  // Allow status badges to be clicked to cycle through states
+  const statuses = ['PENDING','PASS','FAIL','BLOCKED','SKIPPED'];
+  const statusClasses = {
+    'PENDING': 'badge-pending',
+    'PASS': 'badge-pass',
+    'FAIL': 'badge-fail',
+    'BLOCKED': 'badge-blocked',
+    'SKIPPED': 'badge-skipped'
+  };
+  document.querySelectorAll('.badge-pending, .badge-pass, .badge-fail, .badge-blocked, .badge-skipped').forEach(badge => {
+    if (!statuses.includes(badge.textContent.trim())) return;
+    badge.style.cursor = 'pointer';
+    badge.title = 'Click to update status';
+    badge.addEventListener('click', () => {
+      const current = badge.textContent.trim();
+      const idx = statuses.indexOf(current);
+      const next = statuses[(idx + 1) % statuses.length];
+      badge.textContent = next;
+      Object.values(statusClasses).forEach(c => badge.classList.remove(c));
+      badge.classList.add(statusClasses[next]);
+    });
+  });
+</script>
+</body>
+</html>
