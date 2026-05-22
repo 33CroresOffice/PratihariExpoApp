@@ -812,7 +812,7 @@ export default function RegisterScreen() {
   const { language } = useLanguage();
   const isOdia = language === 'or';
   const router = useRouter();
-  const params = useLocalSearchParams<{ admin_remarks?: string; change_section?: string }>();
+  const params = useLocalSearchParams<{ admin_remarks?: string; change_section?: string; change_sections?: string }>();
   const DRAFT_KEY = 'registration_draft_v1';
 
   function saveDraft(f: FormData, s: number) {
@@ -856,10 +856,48 @@ export default function RegisterScreen() {
     personal: 0, contact: 1, documents: 1, seba: 2, family: 3, address: 4,
   };
 
-  // Change-request mode: user can only edit the one locked step
+  // Human-readable labels for each section code
+  const SECTION_LABELS: Record<string, string> = {
+    personal: 'Personal Details',
+    contact: 'Contact & IDs',
+    documents: 'Contact & IDs',
+    seba: 'Seba Details',
+    family: 'Family Details',
+    address: 'Address',
+  };
+
+  // Change-request mode
   const isChangeRequest = existingStatus === 'changes_requested';
-  const changeRequestSection = params.change_section || '';
-  const changeRequestStep = changeRequestSection ? (SECTION_STEP[changeRequestSection] ?? step) : step;
+
+  // Parse all requested sections from params (comma-separated) or fall back to single section
+  const allRequestedSections: string[] = (() => {
+    if (params.change_sections) {
+      return params.change_sections.split(',').map(s => s.trim()).filter(Boolean);
+    }
+    if (params.change_section) return [params.change_section];
+    return [];
+  })();
+
+  // Deduplicate and map to unique STEPS indices (preserving order)
+  const requestedSteps: number[] = (() => {
+    const seen = new Set<number>();
+    const result: number[] = [];
+    for (const sec of allRequestedSections) {
+      const idx = SECTION_STEP[sec];
+      if (idx !== undefined && !seen.has(idx)) {
+        seen.add(idx);
+        result.push(idx);
+      }
+    }
+    return result.length ? result : [0];
+  })();
+
+  // Which index within requestedSteps the user is currently on
+  const [changeRequestIdx, setChangeRequestIdx] = useState(0);
+  // Which steps have been explicitly saved/submitted within this change-request session
+  const [completedChangeSteps, setCompletedChangeSteps] = useState<Set<number>>(new Set());
+
+  const changeRequestStep = isChangeRequest ? (requestedSteps[changeRequestIdx] ?? 0) : step;
 
   // Seba step state
   const HIDDEN_SEBAS = ['Singha Dwara', 'Dwara Ghara'];
@@ -1028,14 +1066,11 @@ export default function RegisterScreen() {
       if (s) {
         setExistingStatus(s.profile_status || '');
         if (s.profile_status === 'changes_requested' || s.profile_status === 'rejected') {
-          // Prefer remarks/section from URL params (navigated from home screen CTA)
           const remarksToShow = params.admin_remarks || s.admin_remarks || '';
-          const sectionToUse = params.change_section || s.change_section || '';
           setAdminRemarks(remarksToShow);
-          // Only jump to the targeted step if there is no existing draft
-          if (!draft) {
-            const targetStep = sectionToUse ? (SECTION_STEP[sectionToUse] ?? 0) : 0;
-            setStep(targetStep);
+          // In change-request mode start at the first requested section
+          if (!draft && s.profile_status === 'changes_requested') {
+            setChangeRequestIdx(0);
           }
         }
         // Restore from draft if one exists (user navigated away and came back)
@@ -1187,9 +1222,10 @@ export default function RegisterScreen() {
 
   function validate(): boolean {
     const e: Record<string, string> = {};
+    const activeStep = isChangeRequest ? changeRequestStep : step;
 
     // ── Tab 0: Personal ─────────────────────────────────────────
-    if (step === 0) {
+    if (activeStep === 0) {
       if (!form.first_name.trim()) e.first_name = 'Required';
       if (!form.last_name.trim()) e.last_name = 'Required';
       if (!form.date_of_birth.trim()) e.date_of_birth = 'Required';
@@ -1199,7 +1235,7 @@ export default function RegisterScreen() {
     }
 
     // ── Tab 1: Contact & IDs ─────────────────────────────────────
-    if (step === 1) {
+    if (activeStep === 1) {
       const phone = form.primary_phone.replace(/^91/, '');
       if (!phone || !/^\d{10}$/.test(phone)) e.primary_phone = '10-digit phone number required';
       if (form.whatsapp_number.trim() && !/^\d{10}$/.test(form.whatsapp_number.trim())) e.whatsapp_number = '10-digit number required';
@@ -1213,13 +1249,13 @@ export default function RegisterScreen() {
     }
 
     // ── Tab 2: Seba selection ────────────────────────────────────
-    if (step === 2) {
+    if (activeStep === 2) {
       const totalSelected = Object.values(sebaSelections).reduce((sum, arr) => sum + arr.length, 0);
       if (totalSelected === 0) e.seba_selection = 'Please select at least one seba beddha';
     }
 
     // ── Tab 3: Family ────────────────────────────────────────────
-    if (step === 3) {
+    if (activeStep === 3) {
       if (!form.father_name.trim()) e.father_name = 'Required';
       if (!form.mother_name.trim()) e.mother_name = 'Required';
       if (!form.marital_status) e.marital_status = 'Please select';
@@ -1231,7 +1267,7 @@ export default function RegisterScreen() {
     }
 
     // ── Tab 4: Address ───────────────────────────────────────────
-    if (step === 4) {
+    if (activeStep === 4) {
       if (!form.permanent_sahi.trim()) e.permanent_sahi = 'Required';
       if (!form.permanent_landmark.trim()) e.permanent_landmark = 'Required';
       if (!form.permanent_post_office.trim()) e.permanent_post_office = 'Required';
@@ -1247,7 +1283,7 @@ export default function RegisterScreen() {
     }
 
     // ── Tab 5: Occupation / Joining date ────────────────────────
-    if (step === 5) {
+    if (activeStep === 5) {
       if (form.joining_date_exact) {
         if (!form.joining_date.trim()) e.joining_date = 'Joining date is required';
       } else {
@@ -1261,11 +1297,25 @@ export default function RegisterScreen() {
 
   function next() {
     if (!validate()) return;
-    // In change-request mode submit immediately — only one step is editable
+
     if (isChangeRequest) {
-      submit();
+      // Mark current step as completed
+      const curStep = requestedSteps[changeRequestIdx];
+      setCompletedChangeSteps((prev) => new Set([...prev, curStep]));
+
+      const isLastSection = changeRequestIdx >= requestedSteps.length - 1;
+      if (isLastSection) {
+        // All sections reviewed — submit
+        submit();
+      } else {
+        // Move to next requested section
+        const nextIdx = changeRequestIdx + 1;
+        setChangeRequestIdx(nextIdx);
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+      }
       return;
     }
+
     if (step === 2) {
       setShowSebaConfirmModal(true);
       return;
@@ -1289,6 +1339,13 @@ export default function RegisterScreen() {
   }
 
   function back() {
+    if (isChangeRequest) {
+      if (changeRequestIdx > 0) {
+        setChangeRequestIdx(changeRequestIdx - 1);
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+      }
+      return;
+    }
     if (step > 0) {
       const prevStep = step - 1;
       setStep(prevStep);
@@ -1358,7 +1415,7 @@ export default function RegisterScreen() {
       joining_year: form.joining_year,
       joining_date: form.joining_date_exact ? form.joining_date : '',
 
-      profile_status: newStatus, submitted_at: new Date().toISOString(), admin_remarks: '', change_section: null,
+      profile_status: newStatus, submitted_at: new Date().toISOString(), admin_remarks: '', change_section: null, change_sections: null,
     };
     const { error: upsertErr } = await supabase.from('sebayats').upsert(payload, { onConflict: 'id' });
     if (upsertErr) { setSaving(false); setSubmitError(upsertErr.message); setShowErrorModal(true); return; }
@@ -2266,7 +2323,8 @@ export default function RegisterScreen() {
   }
 
   function renderStep() {
-    switch (step) {
+    const activeStep = isChangeRequest ? changeRequestStep : step;
+    switch (activeStep) {
       case 0: return renderStep1();   // Personal
       case 1: return renderStep0();   // Contact & IDs
       case 2: return renderStep6();   // Seba
@@ -2299,7 +2357,11 @@ export default function RegisterScreen() {
             <Text style={s.headerEye}>Pratihari Nijog</Text>
             <Text style={s.headerTitle}>{isChangeRequest ? 'Update & Resubmit' : 'Sebayat Registration'}</Text>
           </View>
-          {!isChangeRequest && (
+          {isChangeRequest ? (
+            <View style={s.headerPill}>
+              <Text style={s.headerPillTxt}>{changeRequestIdx + 1} / {requestedSteps.length}</Text>
+            </View>
+          ) : (
             <View style={s.headerPill}>
               <Text style={s.headerPillTxt}>{step + 1} / {STEPS.length}</Text>
             </View>
@@ -2307,19 +2369,34 @@ export default function RegisterScreen() {
         </View>
 
         {/* ── Progress ────────────────────────────────────────── */}
-        {!isChangeRequest && (
-          <View style={s.progressBar}>
-            <View style={[s.progressFill, { width: `${((step + 1) / STEPS.length) * 100}%` as any }]} />
-          </View>
-        )}
+        <View style={s.progressBar}>
+          <View style={[s.progressFill, {
+            width: isChangeRequest
+              ? `${((changeRequestIdx + 1) / requestedSteps.length) * 100}%` as any
+              : `${((step + 1) / STEPS.length) * 100}%` as any
+          }]} />
+        </View>
 
-        {/* ── Step tabs (full registration) / section badge (change request) ── */}
+        {/* ── Step tabs (full registration) / section stepper (change request) ── */}
         {isChangeRequest ? (
-          <View style={s.changeRequestStepBadge}>
-            <AlertCircle color="#92400e" size={14} strokeWidth={2.5} />
-            <Text style={s.changeRequestStepText}>
-              Editing: <Text style={s.changeRequestStepName}>{STEPS[changeRequestStep]}</Text>
-            </Text>
+          <View style={s.crStepperRow}>
+            {requestedSteps.map((stepIdx, i) => {
+              const isDone = completedChangeSteps.has(stepIdx);
+              const isActive = i === changeRequestIdx;
+              const sectionCode = allRequestedSections.find(sec => SECTION_STEP[sec] === stepIdx) || '';
+              const label = SECTION_LABELS[sectionCode] || STEPS[stepIdx] || '';
+              return (
+                <View key={i} style={s.crStepItem}>
+                  {i > 0 && <View style={[s.crStepConnector, isDone && s.crStepConnectorDone]} />}
+                  <View style={[s.crStepDot, isDone && s.crStepDotDone, isActive && s.crStepDotActive]}>
+                    {isDone
+                      ? <Check color="#fff" size={9} strokeWidth={3.5} />
+                      : <Text style={[s.crStepN, isActive && s.crStepNActive]}>{i + 1}</Text>
+                    }
+                  </View>
+                </View>
+              );
+            })}
           </View>
         ) : (
           <>
@@ -2344,6 +2421,18 @@ export default function RegisterScreen() {
           </>
         )}
 
+        {/* Section name label for change request mode */}
+        {isChangeRequest && (
+          <View style={s.crSectionLabel}>
+            <AlertCircle color="#92400e" size={13} strokeWidth={2.5} />
+            <Text style={s.crSectionLabelText}>
+              Editing: <Text style={s.crSectionLabelName}>
+                {SECTION_LABELS[allRequestedSections.find(sec => SECTION_STEP[sec] === changeRequestStep) || ''] || STEPS[changeRequestStep]}
+              </Text>
+            </Text>
+          </View>
+        )}
+
         {/* ── Form ────────────────────────────────────────────── */}
         <ScrollView
           ref={scrollRef}
@@ -2352,15 +2441,21 @@ export default function RegisterScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {(existingStatus === 'changes_requested' || existingStatus === 'rejected') && adminRemarks ? (
-            <View style={[s.remarksBanner, existingStatus === 'rejected' && s.remarksBannerRejected]}>
+          {existingStatus === 'rejected' && adminRemarks ? (
+            <View style={[s.remarksBanner, s.remarksBannerRejected]}>
               <View style={s.remarksBannerHeader}>
-                <AlertCircle color={existingStatus === 'rejected' ? '#991B1B' : '#92400e'} size={15} strokeWidth={2.5} />
-                <Text style={[s.remarksBannerTitle, existingStatus === 'rejected' && s.remarksBannerTitleRejected]}>
-                  {existingStatus === 'rejected' ? 'Rejection Reason' : 'Admin Remarks'}
-                </Text>
+                <AlertCircle color="#991B1B" size={15} strokeWidth={2.5} />
+                <Text style={[s.remarksBannerTitle, s.remarksBannerTitleRejected]}>Rejection Reason</Text>
               </View>
-              <Text style={[s.remarksBannerText, existingStatus === 'rejected' && s.remarksBannerTextRejected]}>{adminRemarks}</Text>
+              <Text style={[s.remarksBannerText, s.remarksBannerTextRejected]}>{adminRemarks}</Text>
+            </View>
+          ) : existingStatus === 'changes_requested' && adminRemarks ? (
+            <View style={s.remarksBanner}>
+              <View style={s.remarksBannerHeader}>
+                <AlertCircle color="#92400e" size={15} strokeWidth={2.5} />
+                <Text style={s.remarksBannerTitle}>Admin Remarks</Text>
+              </View>
+              <Text style={s.remarksBannerText}>{adminRemarks}</Text>
             </View>
           ) : null}
 
@@ -2369,23 +2464,34 @@ export default function RegisterScreen() {
 
           {/* ── Nav ──────────────────────────────────────────── */}
           <View style={s.nav}>
-            {!isChangeRequest && step > 0 ? (
-              <TouchableOpacity style={s.backBtn} onPress={back} activeOpacity={0.7}>
-                <ChevronLeft color={T.inkSecondary} size={18} />
-                <Text style={s.backBtnTxt}>Back</Text>
-              </TouchableOpacity>
-            ) : <View />}
+            {isChangeRequest ? (
+              changeRequestIdx > 0 ? (
+                <TouchableOpacity style={s.backBtn} onPress={back} activeOpacity={0.7}>
+                  <ChevronLeft color={T.inkSecondary} size={18} />
+                  <Text style={s.backBtnTxt}>Back</Text>
+                </TouchableOpacity>
+              ) : <View />
+            ) : (
+              step > 0 ? (
+                <TouchableOpacity style={s.backBtn} onPress={back} activeOpacity={0.7}>
+                  <ChevronLeft color={T.inkSecondary} size={18} />
+                  <Text style={s.backBtnTxt}>Back</Text>
+                </TouchableOpacity>
+              ) : <View />
+            )}
 
             <TouchableOpacity
-              style={[s.nextBtn, (saving || (!isChangeRequest && step === STEPS.length - 1)) && s.nextBtnDis]}
+              style={[s.nextBtn, saving && s.nextBtnDis]}
               onPress={next}
               disabled={saving}
-              activeOpacity={isChangeRequest || step === STEPS.length - 1 ? 0.6 : 0.85}
+              activeOpacity={0.85}
             >
               {saving
                 ? <ActivityIndicator color="#fff" size="small" />
                 : isChangeRequest
-                  ? <><Lock color="#fff" size={14} strokeWidth={2.5} /><Text style={s.nextBtnTxt}>Submit Changes</Text></>
+                  ? changeRequestIdx >= requestedSteps.length - 1
+                    ? <><Lock color="#fff" size={14} strokeWidth={2.5} /><Text style={s.nextBtnTxt}>Resubmit</Text></>
+                    : <><Text style={s.nextBtnTxt}>Next Section</Text><ChevronRight color="#fff" size={18} /></>
                   : step === STEPS.length - 1
                     ? <><Lock color="#fff" size={14} strokeWidth={2.5} /><Text style={s.nextBtnTxt}>Submit for Approval</Text></>
                     : <><Text style={s.nextBtnTxt}>Continue</Text><ChevronRight color="#fff" size={18} /></>
@@ -3022,23 +3128,70 @@ const s = StyleSheet.create({
     borderBottomColor: T.line,
   },
 
-  // Change-request mode — single section badge replacing the full stepper
-  changeRequestStepBadge: {
+  // Change-request mode — multi-section stepper
+  crStepperRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    gap: 0,
+  },
+  crStepItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  crStepConnector: {
+    width: 24,
+    height: 2,
+    backgroundColor: '#E8D5C4',
+    marginHorizontal: 2,
+  },
+  crStepConnectorDone: {
+    backgroundColor: '#92400e',
+  },
+  crStepDot: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#F3F0EC',
+    borderWidth: 2,
+    borderColor: '#E8D5C4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  crStepDotActive: {
+    backgroundColor: '#FFF3CD',
+    borderColor: '#C87612',
+  },
+  crStepDotDone: {
+    backgroundColor: '#92400e',
+    borderColor: '#92400e',
+  },
+  crStepN: {
+    fontSize: 11,
+    fontFamily: 'Poppins_700Bold',
+    color: '#9B8578',
+  },
+  crStepNActive: {
+    color: '#92400e',
+  },
+  crSectionLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     backgroundColor: '#FFFBEB',
     borderBottomWidth: 1,
     borderBottomColor: '#FCD34D',
     paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingVertical: 8,
   },
-  changeRequestStepText: {
+  crSectionLabelText: {
     fontSize: 13,
     fontFamily: 'Poppins_400Regular',
     color: '#92400e',
   },
-  changeRequestStepName: {
+  crSectionLabelName: {
     fontFamily: 'Poppins_700Bold',
     color: '#78350f',
   },

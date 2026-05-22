@@ -213,6 +213,7 @@ export default function HomeScreen() {
   const [pendingAppCount, setPendingAppCount] = useState(0);
   const [adminRemarks, setAdminRemarks] = useState('');
   const [changeSection, setChangeSection] = useState('');
+  const [changeSections, setChangeSections] = useState<string[]>([]);
 
   // Startup notice modal
   type StartupNotice = { id: string; title: string; title_or: string | null; body: string; body_or: string | null; category: string; pinned: boolean; published_at: string | null };
@@ -240,7 +241,7 @@ export default function HomeScreen() {
       if (offlineEnabled) {
         // Hydrate from cache immediately so UI paints with last-synced data
         const [prof, td, tb, nd, nj] = await Promise.all([
-          hydrateFromCache<{ id: string; profile_status: ProfileStatus; full_name: string; photo_url: string | null; primary_phone?: string | null; phone?: string | null; admin_remarks?: string | null; change_section?: string | null } | null>(
+          hydrateFromCache<{ id: string; profile_status: ProfileStatus; full_name: string; photo_url: string | null; primary_phone?: string | null; phone?: string | null; admin_remarks?: string | null; change_section?: string | null; change_sections?: string[] | null } | null>(
             user.id, 'profile', (p) => {
               if (p) {
                 setStatus(p.profile_status);
@@ -249,6 +250,7 @@ export default function HomeScreen() {
                 setSebayatId(p.id);
                 setAdminRemarks(p.admin_remarks || '');
                 setChangeSection(p.change_section || '');
+                setChangeSections(p.change_sections || []);
                 setUserPhone(formatPhone(p.primary_phone || p.phone) || formatPhone(user.user_metadata?.phone || user.phone));
               }
             }
@@ -361,7 +363,7 @@ export default function HomeScreen() {
     let data: any = null;
     const res1 = await supabase
       .from('sebayats')
-      .select('id, profile_status, full_name, photo_url, primary_phone, phone, admin_remarks, change_section')
+      .select('id, profile_status, full_name, photo_url, primary_phone, phone, admin_remarks, change_section, change_sections')
       .eq('auth_user_id', user!.id)
       .maybeSingle();
     data = res1.data;
@@ -369,7 +371,7 @@ export default function HomeScreen() {
     if (!data) {
       const res2 = await supabase
         .from('sebayats')
-        .select('id, profile_status, full_name, photo_url, primary_phone, phone, admin_remarks, change_section')
+        .select('id, profile_status, full_name, photo_url, primary_phone, phone, admin_remarks, change_section, change_sections')
         .eq('id', user!.id)
         .maybeSingle();
       data = res2.data;
@@ -382,6 +384,7 @@ export default function HomeScreen() {
       setSebayatId(data.id);
       setAdminRemarks(data.admin_remarks || '');
       setChangeSection(data.change_section || '');
+      setChangeSections(data.change_sections || []);
       setUserPhone(formatPhone((data as any).primary_phone || (data as any).phone) || formatPhone(user!.user_metadata?.phone || user!.phone));
       if (offlineEnabled && user) await writeCache(user.id, 'profile', data);
     } else {
@@ -928,6 +931,7 @@ export default function HomeScreen() {
           params: {
             admin_remarks: adminRemarks,
             change_section: changeSection || '',
+            change_sections: changeSections.length ? changeSections.join(',') : (changeSection || ''),
           },
         } as any);
       } else {
@@ -1438,7 +1442,14 @@ export default function HomeScreen() {
                   <CtaIcon color={cta.color} size={26} />
                 </View>
                 <View style={styles.ctaBody}>
-                  <Text style={[styles.ctaTitle, { color: cta.color }, isOdia && { fontFamily: 'NotoSansOriya_700Bold' }]}>{cta.title}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <Text style={[styles.ctaTitle, { color: cta.color }, isOdia && { fontFamily: 'NotoSansOriya_700Bold' }]}>{cta.title}</Text>
+                    {status === 'changes_requested' && changeSections.length > 0 && (
+                      <View style={[styles.changeCountBadge, { backgroundColor: cta.color }]}>
+                        <Text style={styles.changeCountBadgeText}>{changeSections.length} section{changeSections.length !== 1 ? 's' : ''}</Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={[styles.ctaDesc, odiaFont]}>{cta.body}</Text>
                   {(status === 'rejected' || status === 'changes_requested') && adminRemarks ? (
                     <View style={[styles.ctaRemarkBox, { borderLeftColor: cta.color }]}>
@@ -2567,6 +2578,8 @@ const styles = StyleSheet.create({
   },
   ctaActionRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   ctaAction: { fontSize: 13, fontFamily: 'Poppins_600SemiBold' },
+  changeCountBadge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
+  changeCountBadgeText: { fontSize: 11, fontFamily: 'Poppins_700Bold', color: '#fff' },
   ctaRemarkBox: {
     borderLeftWidth: 3,
     paddingLeft: 10,

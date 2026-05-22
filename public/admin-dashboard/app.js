@@ -3017,6 +3017,9 @@ function openActionModal() {
   `;
   showModal(html);
 
+  state._pendingChangeSection = null;
+  state._pendingChangeSections = [];
+
   const remarks = $('#modal-remarks');
   remarks.oninput = () => $('#char-count').textContent = remarks.value.length;
   remarks.focus();
@@ -3030,9 +3033,11 @@ function openActionModal() {
         const lines = checked.map(x => '• ' + x.dataset.line);
         remarks.value = lines.join('\n');
         $('#char-count').textContent = remarks.value.length;
-        // Pick the highest-priority checked section
-        const sections = checked.map(x => x.dataset.section).filter(Boolean);
-        const best = sections.sort((a, b) => SECTION_PRIORITY.indexOf(b) - SECTION_PRIORITY.indexOf(a))[0] || null;
+        // Collect ALL unique checked sections (preserving order by label index)
+        const sections = [...new Set(checked.map(x => x.dataset.section).filter(Boolean))];
+        state._pendingChangeSections = sections;
+        // Also pick the highest-priority single section for legacy change_section field
+        const best = [...sections].sort((a, b) => SECTION_PRIORITY.indexOf(b) - SECTION_PRIORITY.indexOf(a))[0] || null;
         state._pendingChangeSection = best;
       };
     });
@@ -3054,6 +3059,7 @@ async function confirmAction() {
   const statusMap = { approve: 'approved', reject: 'rejected', changes: 'changes_requested' };
   const newStatus = statusMap[type];
   const changeSection = type === 'changes' ? (state._pendingChangeSection || null) : null;
+  const changeSections = type === 'changes' ? (state._pendingChangeSections?.length ? state._pendingChangeSections : (changeSection ? [changeSection] : null)) : null;
 
   let successes = 0, errors = 0;
   for (const id of sebayatIds) {
@@ -3063,7 +3069,7 @@ async function confirmAction() {
       admin_remarks: remarks,
       reviewed_at: new Date().toISOString(),
       reviewed_by: state.user.id,
-      ...(type === 'changes' ? { change_section: changeSection } : { change_section: null }),
+      ...(type === 'changes' ? { change_section: changeSection, change_sections: changeSections } : { change_section: null, change_sections: null }),
     };
     if (type === 'approve' && regNo && !bulk) updates.registration_no = regNo;
     const { error } = await db.from('sebayats').update(updates).eq('id', id);
