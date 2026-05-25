@@ -1172,9 +1172,11 @@ export default function RegisterScreen() {
     if (!loadingExisting) saveDraft(form, step);
   }, [form, step, loadingExisting]);
 
-  // Load seba categories + beddha map + existing selections when reaching step 6
+  // Load seba categories + beddha map + existing selections when reaching step 2
+  // In change-request mode `step` stays 0; use changeRequestStep instead.
   useEffect(() => {
-    if (step !== 2) return;
+    const activeStep = isChangeRequest ? changeRequestStep : step;
+    if (activeStep !== 2) return;
     if (sebaCategories.length > 0) return; // already loaded
     async function loadSeba() {
       setLoadingSeba(true);
@@ -1211,7 +1213,7 @@ export default function RegisterScreen() {
       setLoadingSeba(false);
     }
     loadSeba();
-  }, [step]);
+  }, [step, changeRequestStep]);
 
   function sf(field: ScalarFormKey) {
     return (value: string) => {
@@ -1246,6 +1248,9 @@ export default function RegisterScreen() {
       const hasNoId = form.id_documents.length === 0 || (form.id_documents.length === 1 && !form.id_documents[0].id_type);
       if (hasNoId) e.id_documents = 'At least one identity card is required';
       else if (hasInvalidId) e.id_documents = 'Please select ID type for all added cards';
+      form.id_documents.forEach((d, i) => {
+        if (d.id_type && !d.photo_url) e[`id_photo_${i}`] = 'Please upload ID photo';
+      });
     }
 
     // ── Tab 2: Seba selection ────────────────────────────────────
@@ -1647,12 +1652,13 @@ export default function RegisterScreen() {
                     )}
                   </View>
                   <TouchableOpacity
-                    style={s.uploadRow}
+                    style={[s.uploadRow, errors[`id_photo_${i}`] ? s.uploadRowErr : null]}
                     activeOpacity={0.75}
                     onPress={() => pickAndUpload(`id-doc-${i}`, (url) => {
                       const upd = [...form.id_documents];
                       upd[i] = { ...upd[i], photo_url: url };
                       setForm((prev) => ({ ...prev, id_documents: upd }));
+                      setErrors((prev) => ({ ...prev, [`id_photo_${i}`]: '' }));
                     })}
                   >
                     <View style={s.uploadIcon}>
@@ -1669,6 +1675,7 @@ export default function RegisterScreen() {
                         : <Upload color={T.inkQuaternary} size={16} />
                     }
                   </TouchableOpacity>
+                  {errors[`id_photo_${i}`] ? <Text style={[p.errMsg, { marginTop: 4 }]}>{errors[`id_photo_${i}`]}</Text> : null}
                 </View>
               );
             })}
@@ -3286,6 +3293,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  uploadRowErr: { borderColor: T.red, backgroundColor: T.redBg },
   uploadTitle: { fontSize: 14, fontFamily: 'Poppins_600SemiBold', color: T.ink },
   uploadSub: { fontSize: 12, fontFamily: 'Poppins_400Regular', color: T.inkQuaternary, marginTop: 1 },
   idCardNotice: { fontSize: 13, fontFamily: 'Poppins_400Regular', color: T.inkSecondary, marginBottom: 16, lineHeight: 20 },
