@@ -1315,12 +1315,22 @@ function renderActivity() {
                     <td colspan="6" style="padding:12px 20px">
                       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:12px">
                         ${entry.old_value ? `<div>
-                          <div style="font-weight:600;color:var(--ink3);margin-bottom:6px">Before</div>
-                          <pre style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:6px;padding:10px;font-size:11px;overflow:auto;max-height:200px;color:#7F1D1D;white-space:pre-wrap">${esc(JSON.stringify(entry.old_value, null, 2))}</pre>
+                          <div style="font-weight:600;color:#B91C1C;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                            Before
+                          </div>
+                          <div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+                            ${formatActivityData(entry.old_value)}
+                          </div>
                         </div>` : '<div></div>'}
                         ${entry.new_value ? `<div>
-                          <div style="font-weight:600;color:var(--ink3);margin-bottom:6px">After</div>
-                          <pre style="background:#ECFDF5;border:1px solid #6EE7B7;border-radius:6px;padding:10px;font-size:11px;overflow:auto;max-height:200px;color:#064E3B;white-space:pre-wrap">${esc(JSON.stringify(entry.new_value, null, 2))}</pre>
+                          <div style="font-weight:600;color:#065F46;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10"/></svg>
+                            After
+                          </div>
+                          <div style="background:#ECFDF5;border:1px solid #6EE7B7;border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+                            ${formatActivityData(entry.new_value)}
+                          </div>
                         </div>` : '<div></div>'}
                       </div>
                       ${(entry.ip_address || entry.user_agent) ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-light);display:flex;gap:24px;font-size:11px;color:var(--ink3)">
@@ -1344,6 +1354,74 @@ function renderActivity() {
       ` : ''}
     </div>
   `;
+}
+
+// ============================================================
+// ACTIVITY LOG HELPERS
+// ============================================================
+
+const ACTIVITY_FIELD_LABELS = {
+  status: 'Status',
+  remarks: 'Remarks',
+  profile_status: 'Profile Status',
+  role: 'Role',
+  role_name: 'Role Name',
+  email: 'Email',
+  phone: 'Phone',
+  first_name: 'First Name',
+  last_name: 'Last Name',
+  full_name: 'Full Name',
+  is_disabled: 'Account Disabled',
+  is_super_admin: 'Super Admin',
+  action: 'Action',
+  resource: 'Resource',
+  permission: 'Permission',
+};
+
+const ACTIVITY_STATUS_COLORS = {
+  approved:          { bg: '#D1FAE5', fg: '#065F46', label: 'Approved' },
+  rejected:          { bg: '#FEE2E2', fg: '#991B1B', label: 'Rejected' },
+  submitted:         { bg: '#DBEAFE', fg: '#1E40AF', label: 'Submitted' },
+  resubmitted:       { bg: '#EDE9FE', fg: '#5B21B6', label: 'Resubmitted' },
+  changes_requested: { bg: '#FEF3C7', fg: '#92400E', label: 'Changes Requested' },
+  draft:             { bg: '#F3F4F6', fg: '#374151', label: 'Draft' },
+};
+
+function formatActivityFieldValue(key, val) {
+  if (val === null || val === undefined || val === '') return '<span style="color:#9CA3AF;font-style:italic">—</span>';
+  if (typeof val === 'boolean') return val
+    ? '<span style="color:#059669;font-weight:600">Yes</span>'
+    : '<span style="color:#DC2626;font-weight:600">No</span>';
+
+  const strVal = String(val);
+
+  if (key === 'status' || key === 'profile_status') {
+    const c = ACTIVITY_STATUS_COLORS[strVal];
+    if (c) return `<span style="display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;background:${c.bg};color:${c.fg}">${c.label}</span>`;
+  }
+
+  // Multi-line values (remarks with bullet points): render as a list
+  if (strVal.includes('\n')) {
+    const lines = strVal.split('\n').map(l => l.trim()).filter(Boolean);
+    return `<ul style="margin:0;padding-left:14px;display:flex;flex-direction:column;gap:3px">${lines.map(l => `<li style="font-size:12px;color:inherit">${esc(l)}</li>`).join('')}</ul>`;
+  }
+
+  return `<span style="font-size:12px">${esc(strVal)}</span>`;
+}
+
+function formatActivityData(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+    return `<span style="font-size:12px;color:inherit">${esc(String(obj ?? '—'))}</span>`;
+  }
+  const entries = Object.entries(obj).filter(([, v]) => v !== undefined);
+  if (entries.length === 0) return '<span style="color:#9CA3AF;font-style:italic">No data</span>';
+  return entries.map(([k, v]) => {
+    const label = ACTIVITY_FIELD_LABELS[k] || k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    return `<div style="display:flex;flex-direction:column;gap:2px">
+      <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;opacity:0.6">${esc(label)}</span>
+      <div>${formatActivityFieldValue(k, v)}</div>
+    </div>`;
+  }).join('');
 }
 
 // ============================================================
@@ -2844,18 +2922,41 @@ function drawerAddress(s) {
 }
 
 async function drawerDocuments(s) {
-  const { data } = await db.from('identity_documents').select('*').eq('sebayat_id', s.id).order('created_at');
+  const { data, error } = await db.from('identity_documents').select('*').eq('sebayat_id', s.id).order('created_at');
   const docs = data || [];
   if (docs.length === 0) return emptyState('No documents uploaded', 'This sebayat has not yet uploaded identity documents.', iconFile());
   return `
     <div class="detail-section">
       <div class="detail-section-header"><span class="detail-section-title">Identity Documents (${docs.length})</span><div class="detail-section-line"></div></div>
-      <div class="photo-grid">
-        ${docs.map(d => `
-          <div class="photo-tile" data-src="${esc(d.photo_url)}" style="background-image:url('${esc(d.photo_url)}')">
-            <div class="photo-tile-label">${esc(d.id_type || 'Document')}</div>
-          </div>
-        `).join('')}
+      <div style="display:flex;flex-direction:column;gap:14px">
+        ${docs.map(d => {
+          const hasPhoto = d.photo_url && d.photo_url.trim();
+          return `
+          <div style="border:1px solid #E8D5C4;border-radius:12px;overflow:hidden;background:#fff">
+            <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:#FFF8F3;border-bottom:${hasPhoto ? '1px solid #E8D5C4' : 'none'}">
+              <div style="width:32px;height:32px;border-radius:8px;background:#E8732A;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="7" y1="9" x2="17" y2="9"/><line x1="7" y1="13" x2="13" y2="13"/></svg>
+              </div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:700;color:#2D1810">${esc(d.id_type || 'Identity Document')}</div>
+                ${d.id_number ? `<div style="font-size:12px;color:#6B4C3B;margin-top:1px;font-family:monospace;letter-spacing:0.5px">${esc(d.id_number)}</div>` : ''}
+              </div>
+              ${hasPhoto ? `<button class="btn btn-ghost btn-sm" onclick="openLightbox('${esc(d.photo_url)}')" style="font-size:11px;padding:4px 10px;flex-shrink:0">View</button>` : ''}
+            </div>
+            ${hasPhoto ? `
+            <div style="padding:10px 14px">
+              <div class="photo-tile" data-src="${esc(d.photo_url)}" style="background-image:url('${esc(d.photo_url)}');height:140px;border-radius:8px;width:100%;background-size:contain;background-repeat:no-repeat;background-position:center;background-color:#F7EFE8;cursor:zoom-in">
+                <div class="photo-tile-label">${esc(d.id_type || 'Document')}</div>
+              </div>
+            </div>` : `
+            <div style="padding:10px 14px">
+              <div style="display:flex;align-items:center;gap:8px;color:#9B8578;font-size:12px">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                No photo uploaded for this document
+              </div>
+            </div>`}
+          </div>`;
+        }).join('')}
       </div>
     </div>
   `;
@@ -9767,18 +9868,46 @@ async function renderSebaHistoryView(container) {
     ${sessionsTable}
   `;
 
-  // Attach search handlers
+  // Attach search handlers — preserve focus and cursor position after re-render
   const searchEl = $('#sh-search');
-  if (searchEl) searchEl.addEventListener('input', e => { state.sebaHistorySearch = e.target.value; renderSebaHistoryView(container); });
+  if (searchEl) {
+    searchEl.addEventListener('input', e => {
+      const val = e.target.value;
+      const pos = e.target.selectionStart;
+      state.sebaHistorySearch = val;
+      renderSebaHistoryView(container);
+      const el = $('#sh-search');
+      if (el) { el.focus(); el.setSelectionRange(pos, pos); }
+    });
+  }
   const mSearchEl = $('#sh-member-search');
-  if (mSearchEl) mSearchEl.addEventListener('input', e => { state.sebaHistoryMemberSearch = e.target.value; renderSebaHistoryView(container); });
+  if (mSearchEl) {
+    mSearchEl.addEventListener('input', e => {
+      const val = e.target.value;
+      const pos = e.target.selectionStart;
+      state.sebaHistoryMemberSearch = val;
+      renderSebaHistoryView(container);
+      const el = $('#sh-member-search');
+      if (el) { el.focus(); el.setSelectionRange(pos, pos); }
+    });
+  }
 }
 
 async function openSebaHistoryMember(sebayatId) {
-  const member = state.sebaHistoryMembers.find(m => m.id === sebayatId);
+  // Member may not be in the current date-range summary — look up directly if needed
+  let member = state.sebaHistoryMembers.find(m => m.id === sebayatId);
+  if (!member) {
+    const { data: s } = await db.from('sebayats')
+      .select('id, first_name, last_name, primary_phone')
+      .eq('id', sebayatId)
+      .maybeSingle();
+    if (s) member = { id: s.id, name: `${s.first_name || ''} ${s.last_name || ''}`.trim(), phone: s.primary_phone || '', total: 0, completed: 0, absent: 0, minutes: 0 };
+  }
   if (!member) return;
+
   state.sebaHistoryMember = member;
   state.sebaHistoryMemberLoading = true;
+  state.sebaHistoryMemberEntries = [];
   state.view = 'seba_history_member';
   render();
 
@@ -9789,11 +9918,10 @@ async function openSebaHistoryMember(sebayatId) {
       .eq('sebayat_id', sebayatId)
       .lte('seba_schedule.service_date', today)
       .order('service_date', { referencedTable: 'seba_schedule', ascending: false })
-      .limit(200),
+      .limit(500),
     db.from('seba_sessions')
       .select('id, roster_id, seba_category_id, service_date, started_at, ended_at, duration_minutes')
       .eq('sebayat_id', sebayatId)
-      .not('ended_at', 'is', null)
       .lte('service_date', today)
       .order('service_date', { ascending: false }),
   ]);
@@ -9813,7 +9941,7 @@ async function openSebaHistoryMember(sebayatId) {
 
   state.sebaHistoryMemberEntries = (rosterRes.data || []).map(r => {
     const fallback = `${r.seba_schedule.service_date}__${r.seba_category_id}`;
-    const sess = byRosterId.get(r.id) ?? byDateCatSebayat.get(fallback) ?? null;
+    const sess = byRosterId.get(r.id) ?? byDateCat.get(fallback) ?? null;
     return {
       id: r.id,
       service_date: r.seba_schedule.service_date,

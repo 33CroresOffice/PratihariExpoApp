@@ -64,6 +64,18 @@ function RootNavigator() {
         <Stack.Screen name="auth/phone" />
         <Stack.Screen name="auth/verify" />
         <Stack.Screen name="register" />
+        <Stack.Screen name="notice" />
+        <Stack.Screen name="committee" />
+        <Stack.Screen name="application" />
+        <Stack.Screen name="pali-history" />
+        <Stack.Screen name="social-profile" />
+        <Stack.Screen name="admin-notices" />
+        <Stack.Screen name="admin-committee" />
+        <Stack.Screen name="admin-event-images" />
+        <Stack.Screen name="admin-seba-categories" />
+        <Stack.Screen name="admin-seba-history" />
+        <Stack.Screen name="sebayat/[id]" />
+        <Stack.Screen name="members/[group]" />
         <Stack.Screen name="+not-found" />
       </Stack>
       <StatusBar style="dark" />
