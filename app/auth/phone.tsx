@@ -8,13 +8,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { Phone, MessageCircle, Shield, Globe } from 'lucide-react-native';
+import { Phone, MessageCircle, Globe } from 'lucide-react-native';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const COLORS = {
   saffron: '#E8732A',
@@ -43,6 +43,7 @@ export default function PhoneScreen() {
   const { sendOtp } = useAuth();
   const router = useRouter();
   const { t, language, setLanguage } = useLanguage();
+  const insets = useSafeAreaInsets();
 
   const fullPhone = `91${phoneNumber}`;
 
@@ -94,7 +95,7 @@ export default function PhoneScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <View style={styles.langToggleRow}>
+      <View style={[styles.langToggleRow, { top: insets.top + 12 }]}>
         <View style={styles.langToggle}>
           <Globe size={13} color={COLORS.textSecondary} />
           <TouchableOpacity
@@ -248,16 +249,6 @@ export default function PhoneScreen() {
           <Text style={[styles.footerText, language === 'or' && styles.textOdia]}>
             {t('common.jayJagannath')}
           </Text>
-          <TouchableOpacity
-            style={styles.adminLink}
-            onPress={() => Linking.openURL('/admin-dashboard/index.html')}
-            activeOpacity={0.7}
-          >
-            <Shield size={13} color={COLORS.textMuted} />
-            <Text style={[styles.adminLinkText, language === 'or' && styles.textOdia]}>
-              {t('auth.adminDashboard')}
-            </Text>
-          </TouchableOpacity>
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -446,21 +437,8 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins_500Medium',
     fontStyle: 'italic',
   },
-  adminLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-  },
-  adminLinkText: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-    fontFamily: 'Poppins_400Regular',
-  },
   langToggleRow: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 58 : 28,
     right: 16,
     zIndex: 10,
   },
