@@ -9914,45 +9914,77 @@ async function openSebaHistoryMember(sebayatId) {
   const today = new Date().toISOString().split('T')[0];
   const [rosterRes, sessionRes] = await Promise.all([
     db.from('seba_roster')
-      .select('id, beddha_number, is_absent, seba_category_id, seba_schedule!inner(service_date), seba_categories!inner(name)')
+      .select('id, beddha_number, is_absent, seba_category_id, schedule_id, seba_schedule(service_date), seba_categories(name)')
       .eq('sebayat_id', sebayatId)
-      .lte('seba_schedule.service_date', today)
-      .order('service_date', { referencedTable: 'seba_schedule', ascending: false })
-      .limit(500),
+      .limit(1000),
     db.from('seba_sessions')
-      .select('id, roster_id, seba_category_id, service_date, started_at, ended_at, duration_minutes')
+      .select('id, roster_id, seba_category_id, service_date, started_at, ended_at, duration_minutes, seba_categories(name)')
       .eq('sebayat_id', sebayatId)
       .lte('service_date', today)
-      .order('service_date', { ascending: false }),
+      .order('service_date', { ascending: false })
+      .limit(500),
   ]);
 
-  const byRosterId = new Map();
-  const byDateCat = new Map();
+  // Build lookup maps from roster entries
+  const rosterById = new Map();
+  const rosterByDateCat = new Map();
+  for (const r of (rosterRes.data || [])) {
+    const date = r.seba_schedule?.service_date;
+    if (!date) continue;
+    rosterById.set(r.id, { ...r, service_date: date });
+    const k = `${date}__${r.seba_category_id}`;
+    if (!rosterByDateCat.has(k)) rosterByDateCat.set(k, { ...r, service_date: date });
+  }
+
+  // Deduplicate sessions: keep latest per (service_date, seba_category_id)
+  const sessionMap = new Map();
   for (const s of (sessionRes.data || [])) {
-    if (s.roster_id) {
-      const ex = byRosterId.get(s.roster_id);
-      if (!ex || s.started_at > ex.started_at) byRosterId.set(s.roster_id, s);
-    } else {
-      const k = `${s.service_date}__${s.seba_category_id}`;
-      const ex = byDateCat.get(k);
-      if (!ex || s.started_at > ex.started_at) byDateCat.set(k, s);
+    const k = `${s.service_date}__${s.seba_category_id}`;
+    const ex = sessionMap.get(k);
+    if (!ex || s.started_at > ex.started_at) sessionMap.set(k, s);
+  }
+
+  // Build entries from sessions as the primary source, enriched with roster data
+  const sessionEntries = Array.from(sessionMap.values()).map(s => {
+    const roster = s.roster_id
+      ? rosterById.get(s.roster_id)
+      : rosterByDateCat.get(`${s.service_date}__${s.seba_category_id}`);
+    return {
+      id: s.id,
+      service_date: s.service_date,
+      seba_name: s.seba_categories?.name ?? roster?.seba_categories?.name ?? '—',
+      beddha_number: roster?.beddha_number ?? null,
+      is_absent: roster?.is_absent ?? false,
+      started_at: s.started_at,
+      ended_at: s.ended_at,
+      duration_minutes: s.duration_minutes,
+    };
+  });
+
+  // Also include roster entries that have no matching session (absent / no-show)
+  const coveredKeys = new Set(sessionEntries.map(e => `${e.service_date}__${e.seba_name}`));
+  const rosterOnlyEntries = [];
+  for (const r of (rosterRes.data || [])) {
+    const date = r.seba_schedule?.service_date;
+    if (!date || date > today) continue;
+    const k = `${date}__${(r.seba_categories?.name ?? '')}`;
+    if (!coveredKeys.has(k)) {
+      rosterOnlyEntries.push({
+        id: r.id,
+        service_date: date,
+        seba_name: r.seba_categories?.name ?? '—',
+        beddha_number: r.beddha_number,
+        is_absent: r.is_absent,
+        started_at: null,
+        ended_at: null,
+        duration_minutes: null,
+      });
     }
   }
 
-  state.sebaHistoryMemberEntries = (rosterRes.data || []).map(r => {
-    const fallback = `${r.seba_schedule.service_date}__${r.seba_category_id}`;
-    const sess = byRosterId.get(r.id) ?? byDateCat.get(fallback) ?? null;
-    return {
-      id: r.id,
-      service_date: r.seba_schedule.service_date,
-      seba_name: r.seba_categories?.name ?? '—',
-      beddha_number: r.beddha_number,
-      is_absent: r.is_absent,
-      started_at: sess?.started_at ?? null,
-      ended_at: sess?.ended_at ?? null,
-      duration_minutes: sess?.duration_minutes ?? null,
-    };
-  });
+  const allEntries = [...sessionEntries, ...rosterOnlyEntries];
+  allEntries.sort((a, b) => b.service_date.localeCompare(a.service_date));
+  state.sebaHistoryMemberEntries = allEntries;
 
   state.sebaHistoryMemberLoading = false;
   render();
@@ -9964,6 +9996,9 @@ function renderSebaHistoryMemberView(container) {
 
   const entries = state.sebaHistoryMemberEntries;
   const totalMinutes = entries.reduce((acc, e) => acc + (e.duration_minutes || 0), 0);
+  const totalDuties = entries.length;
+  const recorded = entries.filter(e => e.started_at).length;
+  const absent = entries.filter(e => e.is_absent).length;
 
   const rowColor = (e) => {
     if (e.is_absent) return '#e53e3e';
@@ -9982,19 +10017,19 @@ function renderSebaHistoryMemberView(container) {
 
     <div class="stats-row" style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">
       <div class="stat-card" style="flex:1;min-width:120px">
-        <div class="stat-value" style="color:#E8732A">${m.total}</div>
+        <div class="stat-value" style="color:#E8732A">${state.sebaHistoryMemberLoading ? '…' : totalDuties}</div>
         <div class="stat-label">Total Duties</div>
       </div>
       <div class="stat-card" style="flex:1;min-width:120px">
-        <div class="stat-value" style="color:#1A7A6A">${m.completed}</div>
+        <div class="stat-value" style="color:#1A7A6A">${state.sebaHistoryMemberLoading ? '…' : recorded}</div>
         <div class="stat-label">Recorded</div>
       </div>
       <div class="stat-card" style="flex:1;min-width:120px">
-        <div class="stat-value" style="color:#e53e3e">${m.absent}</div>
+        <div class="stat-value" style="color:#e53e3e">${state.sebaHistoryMemberLoading ? '…' : absent}</div>
         <div class="stat-label">Absent</div>
       </div>
       <div class="stat-card" style="flex:1;min-width:120px">
-        <div class="stat-value" style="color:#D4A843">${totalMinutes > 0 ? fmtDur(totalMinutes) : '—'}</div>
+        <div class="stat-value" style="color:#D4A843">${state.sebaHistoryMemberLoading ? '…' : totalMinutes > 0 ? fmtDur(totalMinutes) : '—'}</div>
         <div class="stat-label">Total Served</div>
       </div>
     </div>
@@ -10009,8 +10044,8 @@ function renderSebaHistoryMemberView(container) {
             <tr style="border-left:3px solid ${rowColor(e)}">
               <td>${fmtDateLocal(e.service_date)}</td>
               <td><strong>${esc(e.seba_name)}</strong></td>
-              <td>#${e.beddha_number}</td>
-              <td>${e.is_absent ? `<span class="badge badge-red">Absent</span>` : e.ended_at ? `<span class="badge badge-green">Completed</span>` : `<span class="badge">No Record</span>`}</td>
+              <td>${e.beddha_number != null ? '#' + e.beddha_number : '—'}</td>
+              <td>${e.is_absent ? `<span class="badge badge-red">Absent</span>` : e.ended_at ? `<span class="badge badge-green">Completed</span>` : e.started_at ? `<span class="badge badge-orange">In Progress</span>` : `<span class="badge">No Record</span>`}</td>
               <td>${e.started_at ? fmtTime(e.started_at) : '—'}</td>
               <td>${e.ended_at ? fmtTime(e.ended_at) : '—'}</td>
               <td>${e.duration_minutes != null ? fmtDur(e.duration_minutes) : '—'}</td>
