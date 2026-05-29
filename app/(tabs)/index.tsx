@@ -183,7 +183,9 @@ export default function HomeScreen() {
   };
   const [showOfflineGate, setShowOfflineGate] = useState(false);
   const router = useRouter();
-  const [status, setStatus] = useState<ProfileStatus | 'none'>('none');
+  // Seed from AuthContext so admin-created approved profiles don't flash "Continue Registration"
+  // while fetchStatus races against the auth_user_id DB write in verify-otp.
+  const [status, setStatus] = useState<ProfileStatus | 'none'>(profileStatus);
   const [fullName, setFullName] = useState('');
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [userPhone, setUserPhone] = useState<string | null>(null);
@@ -232,6 +234,15 @@ export default function HomeScreen() {
   const [doneSessions, setDoneSessions] = useState<Record<string, { started_at: string; ended_at: string; duration_minutes: number; duration_seconds?: number }>>({}); // key: completed today
   const [sessionElapsed, setSessionElapsed] = useState<Record<string, number>>({}); // seconds
   const sessionTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Keep local status in sync with AuthContext profileStatus so that when
+  // onAuthStateChange fires fetchProfileStatus (which has no race condition after
+  // the first login linking is done), the UI reflects the correct status.
+  useEffect(() => {
+    if (profileStatus !== 'none') {
+      setStatus(profileStatus);
+    }
+  }, [profileStatus]);
 
   useEffect(() => {
     if (!user) return;

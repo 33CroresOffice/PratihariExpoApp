@@ -53,6 +53,7 @@ type HistoryEntry = {
   id: string;
   service_date: string;
   seba_name: string;
+  seba_name_or: string | null;
   beddha_number: number | null;
   is_absent: boolean;
   started_at: string | null;
@@ -164,14 +165,14 @@ export default function PaliHistoryScreen() {
     const [sessionResult, rosterResult] = await Promise.all([
       supabase
         .from('seba_sessions')
-        .select('id, roster_id, seba_category_id, service_date, started_at, ended_at, duration_minutes, duration_seconds, beddha_number, seba_categories(name)')
+        .select('id, roster_id, seba_category_id, service_date, started_at, ended_at, duration_minutes, duration_seconds, beddha_number, seba_categories(name, name_or)')
         .eq('sebayat_id', sid)
         .not('ended_at', 'is', null)
         .lte('service_date', today)
         .order('started_at', { ascending: false }),
       supabase
         .from('seba_roster')
-        .select('id, beddha_number, is_absent, seba_category_id, seba_schedule!inner(service_date), seba_categories!inner(name)')
+        .select('id, beddha_number, is_absent, seba_category_id, seba_schedule!inner(service_date), seba_categories!inner(name, name_or)')
         .eq('sebayat_id', sid)
         .lte('seba_schedule.service_date', today)
         .order('service_date', { referencedTable: 'seba_schedule', ascending: false })
@@ -202,6 +203,7 @@ export default function PaliHistoryScreen() {
           id: r.id,
           service_date: r.seba_schedule.service_date,
           seba_name: r.seba_categories.name,
+          seba_name_or: r.seba_categories.name_or ?? null,
           beddha_number: r.beddha_number ?? null,
           is_absent: true,
           started_at: null,
@@ -228,6 +230,7 @@ export default function PaliHistoryScreen() {
         id: s.id,
         service_date: s.service_date,
         seba_name: s.seba_categories?.name ?? '—',
+        seba_name_or: s.seba_categories?.name_or ?? null,
         beddha_number: beddha,
         is_absent: roster?.is_absent ?? false,
         started_at: s.started_at,
@@ -419,7 +422,7 @@ export default function PaliHistoryScreen() {
         <View style={styles.cardBody}>
           {/* Top row: seba name + status badge */}
           <View style={styles.cardTopRow}>
-            <Text style={styles.cardSebaName}>{item.seba_name}</Text>
+            <Text style={styles.cardSebaName}>{language === 'or' && item.seba_name_or ? item.seba_name_or : item.seba_name}</Text>
             <View style={[styles.statusPill, { backgroundColor: statusBg }]}>
               <Text style={[styles.statusPillText, { color: statusTextColor }]}>{statusLabel}</Text>
             </View>

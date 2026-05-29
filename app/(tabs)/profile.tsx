@@ -164,7 +164,9 @@ interface IdentityDoc {
 
 interface NijogAssignment {
   seba_name: string;
+  seba_name_or: string | null;
   group_name: string;
+  group_name_or: string | null;
   beddha_number: number;
 }
 
@@ -172,6 +174,7 @@ interface SebaSelection {
   seba_category_id: string;
   beddha_number: number;
   category_name: string;
+  category_name_or: string | null;
 }
 
 const STATUS_CONFIG_BASE: Record<
@@ -269,6 +272,19 @@ function LinkRow({ label, value }: { label: string; value?: string | null }) {
 const SCREEN_W = Dimensions.get('window').width;
 const DRAWER_W = Math.min(SCREEN_W * 0.78, 300);
 
+const ID_TYPE_KEY_MAP: Record<string, string> = {
+  'Aadhar Card': 'profile.idTypeAadhar',
+  'Aadhaar Card': 'profile.idTypeAadhar',
+  'PAN Card': 'profile.idTypePAN',
+  'Passport': 'profile.idTypePassport',
+  'Voter ID': 'profile.idTypeVoterID',
+};
+
+function translateIdType(idType: string, t: (key: string) => string): string {
+  const key = ID_TYPE_KEY_MAP[idType];
+  return key ? t(key) : idType;
+}
+
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const { isOnline, offlineEnabled } = useOffline();
@@ -360,7 +376,7 @@ export default function ProfileScreen() {
     const year = new Date().getFullYear();
     const { data } = await supabase
       .from('nijog_assignments')
-      .select('beddha_number, year, seba_categories!inner(name, seba_groups!inner(name))')
+      .select('beddha_number, year, seba_categories!inner(name, name_or, seba_groups!inner(name, name_or))')
       .eq('sebayat_id', sid)
       .eq('year', year)
       .order('beddha_number', { ascending: true });
@@ -368,7 +384,9 @@ export default function ProfileScreen() {
     if (data) {
       const rows = (data as any[]).map((r) => ({
         seba_name: r.seba_categories.name,
+        seba_name_or: r.seba_categories.name_or ?? null,
         group_name: r.seba_categories.seba_groups.name,
+        group_name_or: r.seba_categories.seba_groups.name_or ?? null,
         beddha_number: r.beddha_number,
       }));
       setNijogAssignments(rows);
@@ -379,7 +397,7 @@ export default function ProfileScreen() {
   async function fetchSebaSelections(sid: string) {
     const { data } = await supabase
       .from('sebayat_seba_selections')
-      .select('seba_category_id, beddha_number, seba_categories!inner(name)')
+      .select('seba_category_id, beddha_number, seba_categories!inner(name, name_or)')
       .eq('sebayat_id', sid)
       .order('beddha_number', { ascending: true });
 
@@ -388,6 +406,7 @@ export default function ProfileScreen() {
         seba_category_id: r.seba_category_id,
         beddha_number: r.beddha_number,
         category_name: r.seba_categories.name,
+        category_name_or: r.seba_categories.name_or ?? null,
       }));
       setSebaSelections(rows);
       if (offlineEnabled) await writeCache(user!.id, 'seba_selections', rows);
@@ -465,11 +484,12 @@ export default function ProfileScreen() {
     [profile?.first_name, profile?.middle_name, profile?.last_name].filter(Boolean).join(' ') ||
     'Sebayat';
 
-  // Group seba selections by category
-  const sebaSelByCategory: Record<string, number[]> = {};
+  // Group seba selections by category (use Odia name as key when language is Odia)
+  const sebaSelByCategory: Record<string, { nameOr: string | null; beddhas: number[] }> = {};
   sebaSelections.forEach((s) => {
-    if (!sebaSelByCategory[s.category_name]) sebaSelByCategory[s.category_name] = [];
-    sebaSelByCategory[s.category_name].push(s.beddha_number);
+    const key = s.category_name;
+    if (!sebaSelByCategory[key]) sebaSelByCategory[key] = { nameOr: s.category_name_or, beddhas: [] };
+    sebaSelByCategory[key].beddhas.push(s.beddha_number);
   });
 
   const joiningDisplay = profile?.joining_date_exact
@@ -642,7 +662,7 @@ export default function ProfileScreen() {
                 </View>
                 {idDocs.map((doc, i) => (
                   <View key={doc.id} style={[styles.infoRow, { alignItems: 'flex-start' }]}>
-                    <Text style={styles.infoLabel}>{doc.id_type}</Text>
+                    <Text style={styles.infoLabel}>{translateIdType(doc.id_type, t)}</Text>
                     {doc.photo_url ? (
                       <TouchableOpacity style={styles.photoThumbInline} onPress={() => setLightboxUri(doc.photo_url)} activeOpacity={0.8}>
                         <CachedImage uri={doc.photo_url} style={styles.photoThumbImgSm} resizeMode="cover" />
@@ -778,8 +798,8 @@ export default function ProfileScreen() {
                 {nijogAssignments.map((a, i) => (
                   <View key={i} style={[styles.nijogAssignRow, i < nijogAssignments.length - 1 && styles.rowBorder]}>
                     <View style={{ flex: 1, gap: 2 }}>
-                      <Text style={styles.nijogAssignSeba}>{a.seba_name}</Text>
-                      <Text style={styles.nijogAssignGroup}>{a.group_name}</Text>
+                      <Text style={styles.nijogAssignSeba}>{language === 'or' && a.seba_name_or ? a.seba_name_or : a.seba_name}</Text>
+                      <Text style={styles.nijogAssignGroup}>{language === 'or' && a.group_name_or ? a.group_name_or : a.group_name}</Text>
                     </View>
                     <View style={styles.nijogBeddhaTag}>
                       <Hash color={C.saffron} size={11} />
@@ -796,9 +816,9 @@ export default function ProfileScreen() {
                   <Star color={C.textMuted} size={13} />
                   <Text style={styles.subSectionText}>{t('profile.sebaClaims')}</Text>
                 </View>
-                {Object.entries(sebaSelByCategory).map(([catName, beddhas]) => (
+                {Object.entries(sebaSelByCategory).map(([catName, { nameOr, beddhas }]) => (
                   <View key={catName} style={styles.sebaClaimRow}>
-                    <Text style={styles.sebaClaimName}>{catName}</Text>
+                    <Text style={styles.sebaClaimName}>{language === 'or' && nameOr ? nameOr : catName}</Text>
                     <View style={styles.beddhaChips}>
                       {beddhas.map((b) => (
                         <View key={b} style={styles.beddhaChip}>

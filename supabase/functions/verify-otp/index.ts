@@ -82,13 +82,16 @@ Deno.serve(async (req: Request) => {
     // Check for an existing sebayat row by phone (may have been pre-created by admin)
     const { data: existingSebayat } = await supabase
       .from("sebayats")
-      .select("id, auth_user_id")
+      .select("id, auth_user_id, profile_status")
       .eq("phone", phone)
       .maybeSingle();
 
     let isNewUser = false;
     // The email we'll use to generate the magic link session
     let sessionEmail = fallbackEmail;
+    // Profile status to return to the client so it can seed state without a race condition
+    let profileStatus: string | null = existingSebayat?.profile_status ?? null;
+    let sebayatId: string | null = existingSebayat?.id ?? null;
 
     if (!existingSebayat) {
       // Brand new user — create auth account and sebayat row together
@@ -114,10 +117,14 @@ Deno.serve(async (req: Request) => {
         phone,
       });
 
+      sebayatId = newUser.user.id;
+      profileStatus = null;
       sessionEmail = fallbackEmail;
     } else if (!existingSebayat.auth_user_id) {
-      // Admin pre-created profile exists but has no auth account yet — create one and link
-      isNewUser = true;
+      // Admin pre-created profile exists but has no auth account yet — create one and link.
+      // Only treat as "new user" (needs onboarding) if the profile has no substantive status.
+      const existingStatus = existingSebayat.profile_status;
+      isNewUser = !existingStatus || existingStatus === 'draft';
 
       // Check if an auth user with this fallback email already exists
       const { data: existingAuthList } = await supabase.auth.admin.listUsers();
@@ -192,6 +199,8 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({
       success: true,
       is_new_user: isNewUser,
+      profile_status: profileStatus,
+      sebayat_id: sebayatId,
       session: {
         access_token: session.access_token,
         refresh_token: session.refresh_token,

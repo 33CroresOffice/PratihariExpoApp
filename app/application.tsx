@@ -260,11 +260,11 @@ export default function ApplicationScreen() {
   }
 
   async function handleFileUpload(file: File) {
-    if (!sebayatId) return;
+    if (!user) return;
     setUploading(true);
     setUploadError('');
-    const ext = file.name.split('.').pop();
-    const path = `${sebayatId}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    // Use auth user ID as folder prefix to match RLS policy
+    const path = `${user.id}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     const { error } = await supabase.storage
       .from('application-attachments')
       .upload(path, file, { contentType: file.type });
@@ -273,16 +273,15 @@ export default function ApplicationScreen() {
       setUploading(false);
       return;
     }
-    const { data: urlData } = supabase.storage.from('application-attachments').getPublicUrl(path);
     setUploadedFiles((prev) => [
       ...prev,
-      { name: file.name, path, url: urlData.publicUrl, size: file.size },
+      { name: file.name, path, url: '', size: file.size },
     ]);
     setUploading(false);
   }
 
   async function handleNativeUpload() {
-    if (!sebayatId) return;
+    if (!user) return;
 
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -308,23 +307,24 @@ export default function ApplicationScreen() {
       const mimeType = asset.mimeType ?? 'image/jpeg';
       const fileSize = asset.fileSize ?? 0;
       const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const path = `${sebayatId}/${Date.now()}_${safeName}`;
+      // Use auth user ID as folder prefix to match RLS policy
+      const path = `${user.id}/${Date.now()}_${safeName}`;
 
       try {
         const response = await fetch(uri);
-        const blob = await response.blob();
+        const arrayBuffer = await response.arrayBuffer();
+
         const { error } = await supabase.storage
           .from('application-attachments')
-          .upload(path, blob, { contentType: mimeType });
+          .upload(path, arrayBuffer, { contentType: mimeType });
 
         if (error) {
           setUploadError(error.message || 'Upload failed');
           continue;
         }
-        const { data: urlData } = supabase.storage.from('application-attachments').getPublicUrl(path);
         setUploadedFiles((prev) => [
           ...prev,
-          { name: fileName, path, url: urlData.publicUrl, size: fileSize },
+          { name: fileName, path, url: '', size: fileSize },
         ]);
       } catch (e: any) {
         setUploadError(e?.message ?? 'Upload failed');

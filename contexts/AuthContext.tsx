@@ -106,6 +106,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: false, error: data.error || 'Verification failed' };
       }
 
+      // Seed profileStatus immediately from the response before setSession triggers
+      // onAuthStateChange — this avoids the race condition where fetchProfileStatus
+      // runs before the DB write (auth_user_id linking) has propagated.
+      if (data.profile_status) {
+        setState((prev) => ({ ...prev, profileStatus: data.profile_status as ProfileStatus }));
+      }
+
       // Set the session from the returned tokens
       const { error: sessionError } = await supabase.auth.setSession({
         access_token: data.session.access_token,

@@ -8,9 +8,9 @@ import {
   Animated,
   Pressable,
   Dimensions,
-  Platform,
   Image,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -127,6 +127,7 @@ export function DrawerPanel({ menuVisible, drawerAnim, overlayAnim, close, unrea
   const { user, profileStatus } = useAuth();
   const { t, language, setLanguage } = useLanguage();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const isOdia = language === 'or';
   const odiaFont = isOdia ? { fontFamily: 'NotoSansOriya_400Regular' as const } : null;
   const odiaBoldFont = isOdia ? { fontFamily: 'NotoSansOriya_700Bold' as const } : null;
@@ -189,7 +190,7 @@ export function DrawerPanel({ menuVisible, drawerAnim, overlayAnim, close, unrea
           colors={['#E8732A', '#D4A843']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={s.header}
+          style={[s.header, { paddingTop: insets.top + 16 }]}
         >
           <View style={s.headerInner}>
             <View style={s.avatarWrap}>
@@ -326,7 +327,6 @@ const s = StyleSheet.create({
     elevation: 20,
   },
   header: {
-    paddingTop: Platform.OS === 'ios' ? 52 : 16,
     paddingBottom: 20,
     paddingHorizontal: 16,
   },
