@@ -4272,6 +4272,48 @@ function attachAddProfileHandlers() {
     };
   });
 
+  // Duplicate phone check on blur for the primary phone field
+  const apPhoneInput = $('#ap-phone');
+  if (apPhoneInput) {
+    apPhoneInput.addEventListener('blur', async () => {
+      const val = apPhoneInput.value.trim();
+      if (!/^\d{10}$/.test(val)) return;
+      const normalized = '91' + val;
+      const { data: existing } = await db.from('sebayats')
+        .select('id, full_name, first_name, last_name')
+        .or(`phone.eq.${normalized},primary_phone.eq.${normalized}`)
+        .maybeSingle();
+      if (existing) {
+        const name = existing.full_name || [existing.first_name, existing.last_name].filter(Boolean).join(' ') || 'another sebayat';
+        showModal(`
+          <div style="padding:28px;width:420px;box-sizing:border-box">
+            <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:20px">
+              <div style="width:44px;height:44px;border-radius:50%;background:#FFF7ED;border:1.5px solid #FDBA74;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#E8732A" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </div>
+              <div style="flex:1;min-width:0">
+                <h3 style="margin:0 0 6px;font-size:16px;font-weight:700;color:#2D1810">Phone Number Already Registered</h3>
+                <p style="margin:0;font-size:13px;color:#6B4C3B;line-height:1.6">
+                  The number <strong>+91 ${esc(val)}</strong> is already registered to <strong>${esc(name)}</strong>.
+                  Please use a different phone number.
+                </p>
+              </div>
+            </div>
+            <div style="display:flex;justify-content:flex-end">
+              <button class="btn btn-primary" id="ap-phone-dup-ok" style="padding:9px 28px">OK, Use a Different Number</button>
+            </div>
+          </div>
+        `);
+        $('#ap-phone-dup-ok').onclick = () => {
+          closeModal();
+          apPhoneInput.value = '';
+          state.newProfile.phone = '';
+          apPhoneInput.focus();
+        };
+      }
+    });
+  }
+
   // Blur validation on all required [data-ap] fields
   $$('[data-ap]').forEach(el => {
     el.addEventListener('blur', () => {
@@ -4596,7 +4638,10 @@ function attachAddProfileHandlers() {
         date_of_birth: toNull(p.date_of_birth), gender: toNull(p.gender),
         blood_group: toNull(p.blood_group), health_card_no: toNull(p.health_card_no),
         is_bhagari: toBool(p.is_bhagari), is_baristha_bhai_pua: toBool(p.is_baristha_bhai_pua),
-        phone: toNull(p.phone), whatsapp_number: toNull(p.whatsapp_number), email: toNull(p.email),
+        phone: p.phone?.trim() ? '91' + p.phone.trim() : null,
+        primary_phone: p.phone?.trim() ? '91' + p.phone.trim() : null,
+        whatsapp_number: p.whatsapp_number?.trim() ? '91' + p.whatsapp_number.trim() : null,
+        email: toNull(p.email),
         extra_phones: (p.extra_phones || []).filter(Boolean),
         father_name: toNull(p.father_name), father_sebayat_id: toNull(p.father_sebayat_id) || null,
         mother_name: toNull(p.mother_name), marital_status: toNull(p.marital_status),
