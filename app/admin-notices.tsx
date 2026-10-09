@@ -18,7 +18,7 @@ import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { sendNotification } from '@/lib/pushNotifications';
-import { ArrowLeft, Megaphone, Plus, Pencil, Trash2, Eye, EyeOff, Pin, PinOff, X, Check, TriangleAlert as AlertTriangle, Calendar, Briefcase, Bell, Info, MessageSquare, Send, Smartphone, Users, User, Search, ChevronDown, Clock, RefreshCw } from 'lucide-react-native';
+import { ArrowLeft, Megaphone, Plus, Pencil, Trash2, Eye, EyeOff, Pin, PinOff, X, Check, TriangleAlert as AlertTriangle, Calendar, Briefcase, Bell, Info, MessageSquare, Send, Smartphone, Users, User, Search, ChevronDown, Clock, RefreshCw, Repeat } from 'lucide-react-native';
 
 const C = {
   saffron: '#E8732A',
@@ -35,10 +35,12 @@ const C = {
 };
 
 const CATEGORIES = [
-  { key: 'general', label: 'General', color: '#1D6FAE', bg: '#EBF5FB', icon: Info },
-  { key: 'duty',    label: 'Duty',    color: '#B7770D', bg: '#FFF3CD', icon: Calendar },
-  { key: 'event',   label: 'Event',   color: '#27AE60', bg: '#F0FFF4', icon: Briefcase },
-  { key: 'urgent',  label: 'Urgent',  color: '#C0392B', bg: '#FFF5F5', icon: AlertTriangle },
+  { key: 'general',   label: 'General',              color: '#1D6FAE', bg: '#EBF5FB', icon: Info },
+  { key: 'duty',      label: 'Duty',                 color: '#B7770D', bg: '#FFF3CD', icon: Calendar },
+  { key: 'event',     label: 'Event',                color: '#27AE60', bg: '#F0FFF4', icon: Briefcase },
+  { key: 'urgent',    label: 'Urgent',               color: '#C0392B', bg: '#FFF5F5', icon: AlertTriangle },
+  { key: 'temple',    label: 'Temple',               color: '#8B5CF6', bg: '#F5F0FF', icon: Bell },
+  { key: 'committee', label: 'Management Committee', color: '#0E7C7B', bg: '#E0F5F5', icon: Users },
 ];
 
 const CHANNELS = [
@@ -66,6 +68,11 @@ interface Notice {
   channels: string[];
   notify_at: string | null;
   notification_sent_at: string | null;
+  repeat_enabled: boolean;
+  repeat_frequency: string | null;
+  repeat_interval: number;
+  repeat_end_date: string | null;
+  last_repeated_at: string | null;
 }
 
 interface SebayatOption {
@@ -98,6 +105,10 @@ const BLANK = {
   notify_when: 'on_publish' as 'on_publish' | 'custom',
   notify_at_date: '',
   notify_at_time: '',
+  repeat_enabled: false,
+  repeat_frequency: 'weekly' as 'daily' | 'weekly' | 'monthly' | 'yearly',
+  repeat_interval: 1,
+  repeat_end_date: '',
 };
 
 export default function AdminNoticesScreen() {
@@ -204,6 +215,10 @@ export default function AdminNoticesScreen() {
       notify_when: n.notify_at ? 'custom' : 'on_publish',
       notify_at_date: n.notify_at ? n.notify_at.split('T')[0] : '',
       notify_at_time: n.notify_at ? n.notify_at.split('T')[1]?.slice(0, 5) : '',
+      repeat_enabled: n.repeat_enabled ?? false,
+      repeat_frequency: (n.repeat_frequency as any) ?? 'weekly',
+      repeat_interval: n.repeat_interval ?? 1,
+      repeat_end_date: n.repeat_end_date ?? '',
     });
     setSebayatSearch('');
     setSebayatResults([]);
@@ -277,6 +292,10 @@ export default function AdminNoticesScreen() {
       target_ids: form.target_ids,
       channels: form.channels,
       notify_at: buildNotifyAt(),
+      repeat_enabled: form.repeat_enabled,
+      repeat_frequency: form.repeat_enabled ? form.repeat_frequency : null,
+      repeat_interval: form.repeat_enabled ? form.repeat_interval : 1,
+      repeat_end_date: form.repeat_enabled && form.repeat_end_date ? form.repeat_end_date : null,
       updated_at: new Date().toISOString(),
     };
     if (form.is_published && !editing?.published_at) {
@@ -345,8 +364,16 @@ export default function AdminNoticesScreen() {
     return true;
   });
 
+  const GROUP_LABELS: Record<string, string> = {
+    pratihari: 'Pratihari',
+    gochhikar: 'Gochhikar',
+    bhagari: 'Bhagari',
+    baristha_bhai_pua: 'Baristha Bhai Pua',
+    bhai_pua: 'Bhai Pua',
+    palia: 'Palia',
+  };
   function targetLabel(n: Notice) {
-    if (n.target_type === 'group') return (n.target_ids as string[]).join(', ') || 'Group';
+    if (n.target_type === 'group') return (n.target_ids as string[]).map((id) => GROUP_LABELS[id] ?? id).join(', ') || 'Group';
     if (n.target_type === 'individual') {
       const c = (n.target_ids as string[]).length;
       return `${c} member${c !== 1 ? 's' : ''}`;
@@ -394,6 +421,14 @@ export default function AdminNoticesScreen() {
             <View style={styles.metaChip}>
               <Clock color={C.gold} size={11} />
               <Text style={[styles.metaText, { color: C.gold }]}>{formatTs(item.notify_at)}</Text>
+            </View>
+          )}
+          {item.repeat_enabled && (
+            <View style={styles.metaChip}>
+              <Repeat color={C.saffron} size={11} />
+              <Text style={[styles.metaText, { color: C.saffron }]}>
+                {item.repeat_interval > 1 ? `${item.repeat_interval}× ` : ''}{item.repeat_frequency ?? 'repeat'}
+              </Text>
             </View>
           )}
         </View>
@@ -477,21 +512,28 @@ export default function AdminNoticesScreen() {
         </View>
 
         {form.target_type === 'group' && (
-          <View style={styles.groupCheckRow}>
-            {['pratihari', 'gochhikar'].map((g) => {
-              const checked = form.target_ids.includes(g);
+          <View style={styles.groupCheckWrap}>
+            {[
+              { key: 'pratihari', label: 'Pratihari' },
+              { key: 'gochhikar', label: 'Gochhikar' },
+              { key: 'bhagari', label: 'Bhagari' },
+              { key: 'baristha_bhai_pua', label: 'Baristha Bhai Pua' },
+              { key: 'bhai_pua', label: 'Bhai Pua' },
+              { key: 'palia', label: 'Palia' },
+            ].map((g) => {
+              const checked = form.target_ids.includes(g.key);
               return (
                 <TouchableOpacity
-                  key={g}
+                  key={g.key}
                   style={[styles.groupCheck, checked && styles.groupCheckActive]}
-                  onPress={() => toggleGroupTarget(g)}
+                  onPress={() => toggleGroupTarget(g.key)}
                   activeOpacity={0.7}
                 >
                   <View style={[styles.checkbox, checked && styles.checkboxActive]}>
                     {checked && <Check color="#fff" size={10} />}
                   </View>
                   <Text style={[styles.groupCheckText, checked && { color: C.teal }]}>
-                    {g.charAt(0).toUpperCase() + g.slice(1)}
+                    {g.label}
                   </Text>
                 </TouchableOpacity>
               );
@@ -674,7 +716,11 @@ export default function AdminNoticesScreen() {
       )}
 
       {/* Create / Edit Modal */}
-      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setModalVisible(false)}>
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        presentationStyle={Platform.select({ ios: 'pageSheet', default: 'fullScreen' })}
+        onRequestClose={() => setModalVisible(false)}>
         <SafeAreaView style={styles.modalContainer} edges={['top']}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{editing ? 'Edit Notice' : 'New Notice'}</Text>
@@ -786,6 +832,83 @@ export default function AdminNoticesScreen() {
                 <View style={[styles.toggleThumb, form.pinned && styles.toggleThumbOn]} />
               </TouchableOpacity>
             </View>
+
+            <View style={styles.dividerSection} />
+
+            {/* Repeat Publish Section */}
+            <View style={styles.toggleRow}>
+              <View style={styles.toggleInfo}>
+                <View style={styles.repeatLabelRow}>
+                  <Repeat color={C.saffron} size={16} />
+                  <Text style={styles.toggleLabel}>Repeat publish</Text>
+                </View>
+                <Text style={styles.toggleSub}>Automatically re-publish this notice on a schedule</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.toggle, form.repeat_enabled && styles.toggleOn]}
+                onPress={() => setForm((f) => ({ ...f, repeat_enabled: !f.repeat_enabled }))}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.toggleThumb, form.repeat_enabled && styles.toggleThumbOn]} />
+              </TouchableOpacity>
+            </View>
+
+            {form.repeat_enabled && (
+              <View style={styles.repeatConfigWrap}>
+                <Text style={styles.fieldLabel}>Frequency</Text>
+                <View style={styles.repeatFreqRow}>
+                  {(['daily', 'weekly', 'monthly', 'yearly'] as const).map((freq) => {
+                    const active = form.repeat_frequency === freq;
+                    return (
+                      <TouchableOpacity
+                        key={freq}
+                        style={[styles.repeatFreqOption, active && styles.repeatFreqOptionActive]}
+                        onPress={() => setForm((f) => ({ ...f, repeat_frequency: freq }))}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.repeatFreqText, active && styles.repeatFreqTextActive]}>
+                          {freq.charAt(0).toUpperCase() + freq.slice(1)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Repeat every</Text>
+                <View style={styles.repeatIntervalRow}>
+                  <TouchableOpacity
+                    style={styles.intervalBtn}
+                    onPress={() => setForm((f) => ({ ...f, repeat_interval: Math.max(1, f.repeat_interval - 1) }))}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.intervalBtnText}>−</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.intervalValue}>{form.repeat_interval}</Text>
+                  <TouchableOpacity
+                    style={styles.intervalBtn}
+                    onPress={() => setForm((f) => ({ ...f, repeat_interval: Math.min(30, f.repeat_interval + 1) }))}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.intervalBtnText}>+</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.intervalUnit}>
+                    {form.repeat_frequency}{form.repeat_interval > 1 ? 's' : ''}
+                  </Text>
+                </View>
+
+                <Text style={[styles.fieldLabel, { marginTop: 14 }]}>
+                  End date <Text style={{ color: C.textMuted, fontSize: 11 }}>— optional</Text>
+                </Text>
+                <TextInput
+                  style={styles.fieldInput}
+                  value={form.repeat_end_date}
+                  onChangeText={(v) => setForm((f) => ({ ...f, repeat_end_date: v }))}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={C.textMuted}
+                  keyboardType="numeric"
+                />
+              </View>
+            )}
 
             <View style={{ height: 40 }} />
           </ScrollView>
@@ -911,8 +1034,8 @@ const styles = StyleSheet.create({
   targetTypeText: { fontSize: 12, fontFamily: 'Poppins_500Medium', color: C.textMuted },
   targetTypeTextActive: { color: C.teal },
 
-  groupCheckRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
-  groupCheck: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, backgroundColor: '#F5F0EC', borderWidth: 1, borderColor: 'transparent' },
+  groupCheckWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8 },
+  groupCheck: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, backgroundColor: '#F5F0EC', borderWidth: 1, borderColor: 'transparent', flexBasis: '47%', flexGrow: 0 },
   groupCheckActive: { backgroundColor: '#EBF7F4', borderColor: C.teal },
   checkbox: { width: 18, height: 18, borderRadius: 5, borderWidth: 1.5, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
   checkboxActive: { backgroundColor: C.teal, borderColor: C.teal },
@@ -972,4 +1095,18 @@ const styles = StyleSheet.create({
   deleteCancelText: { fontSize: 14, fontFamily: 'Poppins_500Medium', color: C.textSecondary },
   deleteConfirmBtn: { flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: C.error, alignItems: 'center', justifyContent: 'center' },
   deleteConfirmText: { fontSize: 14, fontFamily: 'Poppins_600SemiBold', color: '#fff' },
+
+  // Repeat publish
+  repeatLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  repeatConfigWrap: { marginTop: 4, marginBottom: 8 },
+  repeatFreqRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  repeatFreqOption: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, backgroundColor: '#F5F0EC', borderWidth: 1, borderColor: 'transparent' },
+  repeatFreqOptionActive: { backgroundColor: '#FFF3E0', borderColor: C.saffron },
+  repeatFreqText: { fontSize: 13, fontFamily: 'Poppins_500Medium', color: C.textMuted },
+  repeatFreqTextActive: { color: C.saffron },
+  repeatIntervalRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  intervalBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#F5F0EC', borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
+  intervalBtnText: { fontSize: 20, fontFamily: 'Poppins_600SemiBold', color: C.textPrimary },
+  intervalValue: { fontSize: 18, fontFamily: 'Poppins_700Bold', color: C.textPrimary, minWidth: 28, textAlign: 'center' },
+  intervalUnit: { fontSize: 14, fontFamily: 'Poppins_400Regular', color: C.textMuted },
 });

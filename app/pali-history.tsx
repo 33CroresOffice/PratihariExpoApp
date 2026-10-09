@@ -126,6 +126,7 @@ export default function PaliHistoryScreen() {
     return null;
   }
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [upcomingDates, setUpcomingDates] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [sebayatId, setSebayatId] = useState<string | null>(null);
   const [showCal, setShowCal] = useState(false);
@@ -246,7 +247,30 @@ export default function PaliHistoryScreen() {
 
     setHistory(all);
     if (offlineEnabled && user) await writeCache(user.id, 'pali_history', all);
+    fetchUpcoming(sid);
     setLoading(false);
+  }
+
+  async function fetchUpcoming(sid: string) {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const fromIso = tomorrow.toISOString().split('T')[0];
+
+    const { data } = await supabase
+      .from('seba_roster')
+      .select('id, seba_category_id, seba_schedule!inner(service_date)')
+      .eq('sebayat_id', sid)
+      .gte('seba_schedule.service_date', fromIso)
+      .order('service_date', { referencedTable: 'seba_schedule', ascending: true })
+      .limit(500);
+
+    if (data) {
+      const s = new Set<string>();
+      for (const r of (data as any[])) {
+        s.add(r.seba_schedule.service_date);
+      }
+      setUpcomingDates(s);
+    }
   }
 
   const datesWithDuty = useMemo(() => {
@@ -353,6 +377,7 @@ export default function PaliHistoryScreen() {
             const iso = isoDate(calYear, calMonth, day);
             const hasDuty = datesWithDuty.has(iso);
             const isToday = iso === today;
+            const hasUpcoming = upcomingDates.has(iso);
             const isStart = iso === dateFrom;
             const isEnd = iso === dateTo;
             const inRange = dateFrom && dateTo && iso > dateFrom && iso < dateTo;
@@ -360,7 +385,9 @@ export default function PaliHistoryScreen() {
             const dutyOnDay = history.filter(h => h.service_date === iso);
             const hasAbsent = dutyOnDay.some(h => h.is_absent);
             const hasCompleted = dutyOnDay.some(h => h.ended_at);
-            const dotColor = (hasAbsent && !hasCompleted) ? C.error : C.green;
+            const dotColor = hasDuty
+              ? ((hasAbsent && !hasCompleted) ? C.error : C.green)
+              : hasUpcoming ? C.gold : null;
 
             return (
               <TouchableOpacity
@@ -382,7 +409,8 @@ export default function PaliHistoryScreen() {
                 ]}>
                   {day}
                 </Text>
-                {hasDuty && <View style={[styles.calDot, { backgroundColor: isSelected ? '#fff' : dotColor }]} />}
+                {hasDuty && dotColor && <View style={[styles.calDot, { backgroundColor: isSelected ? '#fff' : dotColor }]} />}
+                {!hasDuty && hasUpcoming && dotColor && <View style={[styles.calDot, { backgroundColor: isSelected ? '#fff' : dotColor }]} />}
               </TouchableOpacity>
             );
           })}
@@ -396,6 +424,10 @@ export default function PaliHistoryScreen() {
           <View style={styles.legendItem}>
             <View style={[styles.legendDot, { backgroundColor: C.error }]} />
             <Text style={styles.legendText}>{t('paliHistory.absent')}</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: C.gold }]} />
+            <Text style={styles.legendText}>{language === 'or' ? 'ଆସନ୍ତା ପାଳି' : 'Upcoming Pali'}</Text>
           </View>
         </View>
       </View>

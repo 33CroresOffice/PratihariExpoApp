@@ -26,7 +26,8 @@ import { pickLocalized, SUPPORTED_LANGUAGES } from '@/lib/i18n';
 import { hydrateFromCache, writeCache } from '@/lib/cachedQuery';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { OfflineGateModal } from '@/components/OfflineGateModal';
-import { FileText, Clock, Circle as XCircle, CircleAlert as AlertCircle, ChevronRight, CalendarDays, Star, Hash, Users, Calendar, Megaphone, Share2, SquareUser as UserSquare2, LayoutGrid, CirclePlay as PlayCircle, CircleStop as StopCircle, CalendarCheck, Search, Menu, X, Bell, Settings, LogOut, User, House, BookOpen, Pin, Lock } from 'lucide-react-native';
+import { FileText, Clock, Circle as XCircle, CircleAlert as AlertCircle, ChevronRight, CalendarDays, Star, Hash, Users, Calendar, Megaphone, Share2, SquareUser as UserSquare2, LayoutGrid, CirclePlay as PlayCircle, CircleStop as StopCircle, CalendarCheck, Search, Menu, X, Bell, BellRing, Settings, LogOut, User, House, BookOpen, Pin, Lock } from 'lucide-react-native';
+import { scheduleOfflineReminders, ensureNotificationChannel } from '@/lib/offlineReminders';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_W = Math.min(SCREEN_WIDTH * 0.78, 300);
@@ -47,12 +48,14 @@ const C = {
 type SearchResult = {
   id: string;
   full_name: string | null;
+  alias_name: string | null;
   phone: string | null;
   primary_phone: string | null;
   health_card_no: string | null;
   photo_url: string | null;
   profile_status: string | null;
   current_sahi: string | null;
+  permanent_sahi: string | null;
   bansa_name: string | null;
 };
 
@@ -193,7 +196,10 @@ export default function HomeScreen() {
   function formatPhone(raw: string | null | undefined): string | null {
     if (!raw) return null;
     const digits = raw.replace(/\D/g, '');
-    return digits ? `+${digits}` : null;
+    if (!digits) return null;
+    if (digits.length === 10) return `+91 ${digits}`;
+    if (digits.length === 12 && digits.startsWith('91')) return `+91 ${digits.slice(2)}`;
+    return `+${digits}`;
   }
   const [loading, setLoading] = useState(true);
   const [sebayatId, setSebayatId] = useState<string | null>(null);
@@ -212,6 +218,7 @@ export default function HomeScreen() {
   const [groupCounts, setGroupCounts] = useState<GroupCounts>({ pratihari: 0, gochhikar: 0 });
   const [todayBeddha, setTodayBeddha] = useState<TodayBeddha>({ pratihari: null, gochhikar: null });
   const [unreadNoticeCount, setUnreadNoticeCount] = useState(0);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [pendingAppCount, setPendingAppCount] = useState(0);
   const [adminRemarks, setAdminRemarks] = useState('');
   const [changeSection, setChangeSection] = useState('');
@@ -290,15 +297,51 @@ export default function HomeScreen() {
       fetchTodaysDuty(sebayatId);
       fetchNextDuty(sebayatId);
       fetchNijogAssignments(sebayatId);
+      scheduleOfflineRemindersForSebayat(sebayatId);
     }
     if (status === 'approved') {
       fetchGroupCounts();
       fetchTodayBeddha();
     }
     fetchUnreadNoticeCount();
+    if (sebayatId && status === 'approved') fetchUnreadNotifCount(sebayatId);
     if (sebayatId) fetchPendingAppCount(sebayatId);
     fetchStartupNotices(sebayatId);
   }, [sebayatId, status, isOnline]);
+
+  async function scheduleOfflineRemindersForSebayat(sid: string) {
+    try {
+      await ensureNotificationChannel();
+      // Fetch upcoming duties for the next 30 days for offline reminders
+      const allSel = await mergedSelections(sid);
+      if (allSel.length === 0) return;
+      const pairFilter = buildPairFilter(allSel);
+      const today = new Date().toISOString().split('T')[0];
+      const future = new Date();
+      future.setDate(future.getDate() + 30);
+      const futureStr = future.toISOString().split('T')[0];
+      const { data: scheduleRows } = await supabase
+        .from('seba_schedule')
+        .select('beddha_number, group_id, service_date')
+        .gte('service_date', today)
+        .lte('service_date', futureStr)
+        .or(pairFilter)
+        .order('service_date', { ascending: true });
+      if (!scheduleRows || scheduleRows.length === 0) return;
+      const duties: { service_date: string; seba_name: string; seba_name_or: string | null; beddha_number: number; is_nijog: boolean }[] = [];
+      for (const row of scheduleRows as any[]) {
+        const matching = allSel.filter((s: any) => s.seba_categories.group_id === row.group_id && s.beddha_number === row.beddha_number);
+        for (const sel of matching) {
+          duties.push({ service_date: row.service_date, seba_name: sel.seba_categories.name, seba_name_or: sel.seba_categories.name_or ?? null, beddha_number: row.beddha_number, is_nijog: sel.is_nijog });
+        }
+      }
+      if (duties.length > 0) {
+        await scheduleOfflineReminders(duties);
+      }
+    } catch {
+      // Best-effort
+    }
+  }
 
   useEffect(() => {
     supabase
@@ -563,14 +606,15 @@ export default function HomeScreen() {
     const isPhone = /^\d+$/.test(q);
     let query = supabase
       .from('sebayats')
-      .select('id, full_name, phone, primary_phone, health_card_no, photo_url, profile_status, current_sahi, bansa_name')
+      .select('id, full_name, alias_name, phone, primary_phone, health_card_no, photo_url, profile_status, current_sahi, permanent_sahi, bansa_name')
       .eq('profile_status', 'approved')
+      .eq('is_suspended', false)
       .limit(20);
 
     if (isPhone) {
       query = query.or(`phone.ilike.%${q}%,primary_phone.ilike.%${q}%,health_card_no.ilike.%${q}%`);
     } else {
-      query = query.ilike('full_name', `%${q}%`);
+      query = query.or(`full_name.ilike.%${q}%,alias_name.ilike.%${q}%,bansa_name.ilike.%${q}%,current_sahi.ilike.%${q}%,permanent_sahi.ilike.%${q}%`);
     }
 
     const { data } = await query;
@@ -753,12 +797,21 @@ export default function HomeScreen() {
     setPendingAppCount(count ?? 0);
   }
 
+  async function fetchUnreadNotifCount(sid: string) {
+    const { count } = await supabase
+      .from('sebayat_notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('sebayat_id', sid)
+      .eq('is_read', false);
+    setUnreadNotifCount(count ?? 0);
+  }
+
   async function fetchUnreadNoticeCount() {
     if (!user) return;
     // Get the sebayat row for this user
     const { data: s } = await supabase
       .from('sebayats')
-      .select('id')
+      .select('id, is_bhagari, is_baristha_bhai_pua, is_bhai_pua, is_palia')
       .eq('auth_user_id', user.id)
       .maybeSingle();
 
@@ -771,6 +824,10 @@ export default function HomeScreen() {
 
     // Determine which groups this user belongs to
     let userGroups: string[] = [];
+    if (s?.is_bhagari) userGroups.push('bhagari');
+    if (s?.is_baristha_bhai_pua) userGroups.push('baristha_bhai_pua');
+    if (s?.is_bhai_pua) userGroups.push('bhai_pua');
+    if (s?.is_palia) userGroups.push('palia');
     if (s) {
       const { data: assignments } = await supabase
         .from('nijog_assignments')
@@ -847,6 +904,17 @@ export default function HomeScreen() {
 
     // Resolve user groups for targeting
     let userGroupCodes: string[] = [];
+    const { data: profileFlags } = sid
+      ? await supabase
+          .from('sebayats')
+          .select('is_bhagari, is_baristha_bhai_pua, is_bhai_pua, is_palia')
+          .eq('id', sid)
+          .maybeSingle()
+      : { data: null };
+    if (profileFlags?.is_bhagari) userGroupCodes.push('bhagari');
+    if (profileFlags?.is_baristha_bhai_pua) userGroupCodes.push('baristha_bhai_pua');
+    if (profileFlags?.is_bhai_pua) userGroupCodes.push('bhai_pua');
+    if (profileFlags?.is_palia) userGroupCodes.push('palia');
     if (sid) {
       const { data: assignments } = await supabase
         .from('nijog_assignments')
@@ -1032,6 +1100,9 @@ export default function HomeScreen() {
                   }
                   <View style={styles.searchResultInfo}>
                     <Text style={styles.searchResultName} numberOfLines={1}>{r.full_name || '—'}</Text>
+                    {r.alias_name && (
+                      <Text style={styles.searchResultAlias} numberOfLines={1}>{r.alias_name}</Text>
+                    )}
                     <View style={styles.searchResultMeta}>
                       {phone && (
                         <View style={styles.searchResultChip}>
@@ -1087,9 +1158,25 @@ export default function HomeScreen() {
               <Search color="rgba(255,255,255,0.7)" size={16} />
               <Text style={[styles.searchPlaceholder, odiaFont]}>{t('home.searchSebayats')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.menuBtn} onPress={openMenu} activeOpacity={0.8}>
-              <Menu color="#fff" size={22} />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {isApproved && (
+                <TouchableOpacity
+                  style={styles.menuBtn}
+                  onPress={() => router.push('/notifications')}
+                  activeOpacity={0.8}
+                >
+                  <BellRing color="#fff" size={22} />
+                  {unreadNotifCount > 0 && (
+                    <View style={styles.notifBadge}>
+                      <Text style={styles.notifBadgeText}>{unreadNotifCount > 9 ? '9+' : unreadNotifCount}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.menuBtn} onPress={openMenu} activeOpacity={0.8}>
+                <Menu color="#fff" size={22} />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Row 2: Welcome text (left) + Avatar (right) */}
@@ -1098,7 +1185,7 @@ export default function HomeScreen() {
               <Text style={[styles.welcomeSmall, odiaFont]}>{t('home.welcomeBack')}</Text>
               <Text style={[styles.headerName, isOdia && { fontFamily: 'NotoSansOriya_700Bold' }]}>{fullName || t('common.jayJagannath')}</Text>
               {userPhone ? (
-                <Text style={styles.headerPhone}>({userPhone.replace(/^\+91/, '')})</Text>
+                <Text style={styles.headerPhone}>{userPhone}</Text>
               ) : null}
             </View>
             <TouchableOpacity onPress={() => router.push('/(tabs)/profile')} activeOpacity={0.85}>
@@ -2124,6 +2211,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins_600SemiBold',
     color: C.textPrimary,
   },
+  searchResultAlias: {
+    fontSize: 12,
+    fontFamily: 'Poppins_400Regular',
+    color: C.textMuted,
+    fontStyle: 'italic',
+    marginBottom: 2,
+  },
   searchResultMeta: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -2154,6 +2248,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.15)',
+  },
+  notifBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#C0392B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: 'rgba(232,115,42,1)',
+  },
+  notifBadgeText: {
+    fontSize: 9,
+    fontFamily: 'Poppins_700Bold',
+    color: '#fff',
   },
   welcomeSmall: {
     fontSize: 14,

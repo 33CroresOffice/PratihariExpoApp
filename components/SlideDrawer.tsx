@@ -22,6 +22,7 @@ import {
   User,
   Calendar,
   Bell,
+  BellRing,
   Users,
   FileText,
   BookOpen,
@@ -32,6 +33,7 @@ import {
   Lock,
   Check,
   Globe,
+  FolderOpen,
 } from 'lucide-react-native';
 
 export const DRAWER_W = Math.min(Dimensions.get('window').width * 0.78, 300);
@@ -256,6 +258,14 @@ export function DrawerPanel({ menuVisible, drawerAnim, overlayAnim, close, unrea
                 <ChevronRight color={C.textMuted} size={16} />
               </TouchableOpacity>
 
+              <TouchableOpacity style={s.item} onPress={() => menuNavigate('/notifications')} activeOpacity={0.75}>
+                <View style={[s.icon, { backgroundColor: '#FFF0E8' }]}>
+                  <BellRing color={C.saffron} size={18} />
+                </View>
+                <Text style={[s.itemText, odiaFont]}>{t('notifications.title')}</Text>
+                <ChevronRight color={C.textMuted} size={16} />
+              </TouchableOpacity>
+
               <TouchableOpacity style={s.item} onPress={() => menuNavigate('/committee')} activeOpacity={0.75}>
                 <View style={[s.icon, { backgroundColor: '#F0FFF4' }]}>
                   <Users color="#27AE60" size={18} />
@@ -277,6 +287,14 @@ export function DrawerPanel({ menuVisible, drawerAnim, overlayAnim, close, unrea
                   <BookOpen color="#B7770D" size={18} />
                 </View>
                 <Text style={[s.itemText, odiaFont]}>{t('drawer.paliHistory')}</Text>
+                <ChevronRight color={C.textMuted} size={16} />
+              </TouchableOpacity>
+
+              <TouchableOpacity style={s.item} onPress={() => menuNavigate('/documents')} activeOpacity={0.75}>
+                <View style={[s.icon, { backgroundColor: '#F5F0FF' }]}>
+                  <FolderOpen color="#8B5CF6" size={18} />
+                </View>
+                <Text style={[s.itemText, odiaFont]}>{t('drawer.documents')}</Text>
                 <ChevronRight color={C.textMuted} size={16} />
               </TouchableOpacity>
             </>

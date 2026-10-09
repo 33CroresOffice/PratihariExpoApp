@@ -1,0 +1,23 @@
+[functions.send-otp]
+verify_jwt = false
+
+[functions.verify-otp]
+verify_jwt = false
+
+[functions.resend-otp]
+verify_jwt = false
+
+[functions.send-notification]
+verify_jwt = false
+
+[functions.niti-started]
+verify_jwt = false
+
+[functions.seba-reminders]
+verify_jwt = false
+
+[functions.manage-admin]
+verify_jwt = true
+
+[functions.broadcast-notification]
+verify_jwt = true

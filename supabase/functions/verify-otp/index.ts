@@ -82,9 +82,17 @@ Deno.serve(async (req: Request) => {
     // Check for an existing sebayat row by phone (may have been pre-created by admin)
     const { data: existingSebayat } = await supabase
       .from("sebayats")
-      .select("id, auth_user_id, profile_status")
+      .select("id, auth_user_id, profile_status, is_suspended")
       .eq("phone", phone)
       .maybeSingle();
+
+    // Block login if the sebayat profile is suspended by an admin
+    if (existingSebayat?.is_suspended) {
+      return jsonResponse(
+        { error: "Your profile has been suspended. Please contact the admin to reactivate your account.", suspended: true },
+        403
+      );
+    }
 
     let isNewUser = false;
     // The email we'll use to generate the magic link session

@@ -169,7 +169,7 @@ function ForceUpdateModal({
 }
 
 function RootNavigator() {
-  const { session, loading } = useAuth();
+  const { session, loading, suspended } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
@@ -187,13 +187,18 @@ function RootNavigator() {
     if (loading) return;
 
     const inAuthGroup = segments[0] === 'auth';
+    const onSuspendedScreen = segments[0] === 'suspended';
 
-    if (!session && !inAuthGroup) {
+    if (suspended && !onSuspendedScreen) {
+      router.replace('/suspended');
+    } else if (!session && !inAuthGroup && !onSuspendedScreen) {
       router.replace('/auth/phone');
-    } else if (session && inAuthGroup) {
+    } else if (session && inAuthGroup && !suspended) {
+      router.replace('/(tabs)');
+    } else if (session && onSuspendedScreen && !suspended) {
       router.replace('/(tabs)');
     }
-  }, [session, loading, segments]);
+  }, [session, loading, suspended, segments]);
 
   if (!splashDone) {
     return (
@@ -221,8 +226,10 @@ function RootNavigator() {
         <Stack.Screen name="admin-event-images" />
         <Stack.Screen name="admin-seba-categories" />
         <Stack.Screen name="admin-seba-history" />
+        <Stack.Screen name="admin-sahis" />
         <Stack.Screen name="sebayat/[id]" />
         <Stack.Screen name="members/[group]" />
+        <Stack.Screen name="suspended" />
         <Stack.Screen name="+not-found" />
       </Stack>
 

@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { CircleCheck as CheckCircle, Circle as XCircle, CircleAlert as AlertCircle, ChevronRight, Users, Clock, Search, X, Megaphone, History, Image as ImageIcon, UserCog, List } from 'lucide-react-native';
+import { CircleCheck as CheckCircle, Circle as XCircle, CircleAlert as AlertCircle, ChevronRight, Users, Clock, Search, X, Megaphone, Bell, History, Image as ImageIcon, UserCog, List, MapPin } from 'lucide-react-native';
 
 const C = {
   saffron: '#E8732A',
@@ -30,6 +30,12 @@ const C = {
 };
 
 type FilterStatus = 'all' | 'submitted' | 'resubmitted' | 'under_review' | 'approved' | 'rejected' | 'changes_requested';
+
+type SebaSelection = {
+  seba_category_id: string;
+  beddha_number: number;
+  seba_categories: { name: string; name_or: string | null };
+};
 
 interface Sebayat {
   id: string;
@@ -51,6 +57,13 @@ interface Sebayat {
   submitted_at: string | null;
   reviewed_at: string | null;
   registration_no: string;
+  alias_name: string | null;
+  aadhaar_number: string | null;
+  health_card_no: string | null;
+  permanent_sahi: string | null;
+  current_sahi: string | null;
+  _seba_selections?: SebaSelection[];
+  [key: string]: any;
 }
 
 const STATUS_COLORS: Record<string, { color: string; bg: string }> = {
@@ -108,7 +121,9 @@ export default function AdminScreen() {
   const [actionModal, setActionModal] = useState<'approve' | 'reject' | 'changes' | null>(null);
   const [remarks, setRemarks] = useState('');
   const [regNo, setRegNo] = useState('');
+  const [actionError, setActionError] = useState('');
   const [actioning, setActioning] = useState(false);
+  const [selectionsMap, setSelectionsMap] = useState<Record<string, SebaSelection[]>>({});
 
   useEffect(() => {
     fetchAll();
@@ -118,12 +133,31 @@ export default function AdminScreen() {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
 
-    const { data } = await supabase
-      .from('sebayats')
-      .select('*')
-      .order('submitted_at', { ascending: false });
+    const [sebRes, selRes] = await Promise.all([
+      supabase.from('sebayats').select('*').order('submitted_at', { ascending: false }),
+      supabase
+        .from('sebayat_seba_selections')
+        .select('sebayat_id, seba_category_id, beddha_number, seba_categories!inner(name, name_or)')
+        .order('beddha_number', { ascending: true }),
+    ]);
 
-    setSebayats(data || []);
+    const map: Record<string, SebaSelection[]> = {};
+    if (selRes.data) {
+      for (const row of selRes.data as any[]) {
+        const sid = row.sebayat_id as string;
+        if (!map[sid]) map[sid] = [];
+        map[sid].push({
+          seba_category_id: row.seba_category_id,
+          beddha_number: row.beddha_number,
+          seba_categories: row.seba_categories,
+        });
+      }
+    }
+    setSelectionsMap(map);
+
+    const sebs = (sebRes.data || []) as Sebayat[];
+    for (const s of sebs) s._seba_selections = map[s.id] || [];
+    setSebayats(sebs);
     if (isRefresh) setRefreshing(false);
     else setLoading(false);
   }
@@ -145,19 +179,28 @@ export default function AdminScreen() {
       reviewed_at: new Date().toISOString(),
       reviewed_by: user!.id,
     };
-    if (action === 'approve' && regNo.trim()) {
-      updates.registration_no = regNo.trim();
+    if (action === 'approve') {
+      const { error } = await supabase.rpc('approve_sebayat_with_registration', {
+        p_sebayat_id: selected.id,
+        p_registration_no: regNo.trim() || null,
+        p_admin_remarks: remarks || '',
+      });
+      if (error) {
+        setActioning(false);
+        setActionError('Approval could not be completed. Check the registration number and try again.');
+        return;
+      }
+    } else {
+      await supabase.from('sebayats').update(updates).eq('id', selected.id);
+
+      await supabase.from('profile_review_history').insert({
+        sebayat_id: selected.id,
+        from_status: selected.profile_status,
+        to_status: newStatus,
+        remarks: remarks || '',
+        changed_by: user!.id,
+      });
     }
-
-    await supabase.from('sebayats').update(updates).eq('id', selected.id);
-
-    await supabase.from('profile_review_history').insert({
-      sebayat_id: selected.id,
-      from_status: selected.profile_status,
-      to_status: newStatus,
-      remarks: remarks || '',
-      changed_by: user!.id,
-    });
 
     setActioning(false);
     setActionModal(null);
@@ -175,7 +218,13 @@ export default function AdminScreen() {
       s.full_name?.toLowerCase().includes(q) ||
       s.phone?.includes(q) ||
       s.bansa_name?.toLowerCase().includes(q) ||
-      s.seba_name?.toLowerCase().includes(q);
+      s.seba_name?.toLowerCase().includes(q) ||
+      s.alias_name?.toLowerCase().includes(q) ||
+      s.aadhaar_number?.includes(q) ||
+      s.health_card_no?.toLowerCase().includes(q) ||
+      s.permanent_sahi?.toLowerCase().includes(q) ||
+      s.current_sahi?.toLowerCase().includes(q) ||
+      s.registration_no?.toLowerCase().includes(q);
     return matchStatus && matchSearch;
   });
 
@@ -223,7 +272,12 @@ export default function AdminScreen() {
 
       {/* Quick Actions */}
       <Text style={styles.quickActionsLabel}>Quick Actions</Text>
-      <View style={styles.quickGrid}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.quickGridContent}
+      >
+        <View style={styles.quickGrid}>
         <TouchableOpacity style={[styles.quickTile, { borderColor: '#1A7A6A30' }]} onPress={() => router.push('/admin-notices')} activeOpacity={0.85}>
           <View style={[styles.quickTileIcon, { backgroundColor: '#EAF7F5' }]}><Megaphone color="#1A7A6A" size={20} /></View>
           <Text style={[styles.quickTileTitle, { color: '#0E5C50' }]}>Notices</Text>
@@ -244,7 +298,16 @@ export default function AdminScreen() {
           <View style={[styles.quickTileIcon, { backgroundColor: '#FFF8F0' }]}><List color="#E8732A" size={20} /></View>
           <Text style={[styles.quickTileTitle, { color: '#C05A1A' }]}>Seba Categories</Text>
         </TouchableOpacity>
-      </View>
+        <TouchableOpacity style={[styles.quickTile, { borderColor: '#6B4C3B30' }]} onPress={() => router.push('/admin-notifications')} activeOpacity={0.85}>
+          <View style={[styles.quickTileIcon, { backgroundColor: '#F5F0EC' }]}><Bell color="#6B4C3B" size={20} /></View>
+          <Text style={[styles.quickTileTitle, { color: '#6B4C3B' }]}>Notifications</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.quickTile, { borderColor: '#7B3F0030' }]} onPress={() => router.push('/admin-sahis')} activeOpacity={0.85}>
+          <View style={[styles.quickTileIcon, { backgroundColor: '#FDF4E3' }]}><MapPin color="#7B3F00" size={20} /></View>
+          <Text style={[styles.quickTileTitle, { color: '#7B3F00' }]}>Sahi Management</Text>
+        </TouchableOpacity>
+        </View>
+      </ScrollView>
 
       {/* Search */}
       <View style={styles.searchRow}>
@@ -253,7 +316,7 @@ export default function AdminScreen() {
           style={styles.searchInput}
           value={search}
           onChangeText={setSearch}
-          placeholder="Search name, phone, bansa..."
+          placeholder="Search name, phone, aadhaar, health no, sahi, alias..."
           placeholderTextColor={C.textMuted}
         />
         {search ? (
@@ -317,7 +380,11 @@ export default function AdminScreen() {
                     </View>
                   </View>
                   <Text style={styles.cardPhone}>+{s.phone}</Text>
-                  {s.seba_name ? (
+                  {s._seba_selections && s._seba_selections.length > 0 ? (
+                    <Text style={styles.cardSeba}>
+                      {s._seba_selections.map((sel) => `${sel.seba_categories.name} #${sel.beddha_number}`).join(' · ')}
+                    </Text>
+                  ) : s.seba_name ? (
                     <Text style={styles.cardSeba}>{s.seba_name} · {s.bansa_name}</Text>
                   ) : null}
                 </View>
@@ -371,9 +438,21 @@ export default function AdminScreen() {
               </DetailSection>
 
               <DetailSection title="Seba Details">
-                <DetailRow label="Bansa" value={selected.bansa_name} />
+                {selected._seba_selections && selected._seba_selections.length > 0 ? (
+                  selected._seba_selections.map((sel, i) => (
+                    <DetailRow
+                      key={i}
+                      label={sel.seba_categories.name_or || sel.seba_categories.name}
+                      value={`Beddha #${sel.beddha_number}`}
+                    />
+                  ))
+                ) : (
+                  <>
+                    <DetailRow label="Bansa" value={selected.bansa_name} />
+                    <DetailRow label="Seba" value={selected.seba_name} />
+                  </>
+                )}
                 <DetailRow label="Palia" value={selected.palia_number} />
-                <DetailRow label="Seba" value={selected.seba_name} />
                 {selected.registration_no ? (
                   <DetailRow label="Reg. No." value={selected.registration_no} />
                 ) : null}
@@ -392,7 +471,7 @@ export default function AdminScreen() {
                 <View style={styles.actionButtons}>
                   <TouchableOpacity
                     style={[styles.actionBtn, styles.approveBtn]}
-                    onPress={() => { setActionModal('approve'); setRemarks(''); setRegNo(''); }}
+                    onPress={() => { setActionModal('approve'); setRemarks(''); setRegNo(''); setActionError(''); }}
                     activeOpacity={0.8}
                   >
                     <CheckCircle color="#fff" size={18} />
@@ -434,7 +513,7 @@ export default function AdminScreen() {
             </Text>
             <Text style={styles.confirmDesc}>
               {actionModal === 'approve'
-                ? 'Optionally assign a registration number and add remarks.'
+                ? 'A registration number will be assigned automatically. Enter one only for a special number, then add remarks if needed.'
                 : 'Please provide remarks to help the applicant understand the decision.'}
             </Text>
 
@@ -443,10 +522,12 @@ export default function AdminScreen() {
                 style={styles.confirmInput}
                 value={regNo}
                 onChangeText={setRegNo}
-                placeholder="Registration No. (optional)"
+                placeholder="Leave blank for PN-101 onward, or enter PN-001"
                 placeholderTextColor={C.textMuted}
               />
             )}
+
+            {actionError ? <Text style={styles.actionError}>{actionError}</Text> : null}
 
             <TextInput
               style={[styles.confirmInput, styles.confirmTextArea]}
@@ -621,16 +702,17 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginTop: 4,
   },
+  quickGridContent: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+  },
   quickGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: 12,
     gap: 8,
-    marginBottom: 12,
   },
   quickTile: {
-    width: '31%',
-    flexGrow: 1,
+    width: 132,
+    flexGrow: 0,
     backgroundColor: '#fff',
     borderRadius: 14,
     borderWidth: 1,
@@ -822,6 +904,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins_400Regular',
     color: C.textPrimary,
     marginBottom: 12,
+  },
+  actionError: {
+    color: C.error,
+    fontSize: 12,
+    fontFamily: 'Poppins_500Medium',
+    marginBottom: 10,
   },
   confirmTextArea: { height: 100, textAlignVertical: 'top', paddingTop: 10 },
   confirmActions: { flexDirection: 'row', gap: 10 },

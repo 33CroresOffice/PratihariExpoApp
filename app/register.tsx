@@ -133,6 +133,8 @@ interface FormData {
   photo_url: string;
   is_bhagari: boolean;
   is_baristha_bhai_pua: boolean;
+  is_bhai_pua: boolean;
+  is_palia: boolean;
   blood_group: string;
   health_card_no: string;
   health_card_photo_url: string;
@@ -142,10 +144,15 @@ interface FormData {
   marital_status: string;
   spouse_name: string;
   spouse_photo_url: string;
+  spouse_dob: string;
   spouse_father_name: string;
+  spouse_father_dob: string;
   spouse_mother_name: string;
+  spouse_mother_dob: string;
   spouse_father_photo_url: string;
   spouse_mother_photo_url: string;
+  father_dob: string;
+  mother_dob: string;
   children: ChildEntry[];
   current_sahi: string;
   current_landmark: string;
@@ -179,6 +186,7 @@ interface FormData {
   joining_date_exact: boolean;
   joining_year: string;
   joining_date: string;
+  hobby: string;
 }
 
 type ScalarFormKey = {
@@ -201,6 +209,8 @@ const EMPTY: FormData = {
   photo_url: '',
   is_bhagari: false,
   is_baristha_bhai_pua: false,
+  is_bhai_pua: false,
+  is_palia: false,
   blood_group: '',
   health_card_no: '',
   health_card_photo_url: '',
@@ -209,11 +219,16 @@ const EMPTY: FormData = {
   mother_name: '',
   marital_status: '',
   spouse_name: '',
+  spouse_dob: '',
   spouse_photo_url: '',
   spouse_father_name: '',
+  spouse_father_dob: '',
   spouse_mother_name: '',
+  spouse_mother_dob: '',
   spouse_father_photo_url: '',
   spouse_mother_photo_url: '',
+  father_dob: '',
+  mother_dob: '',
   children: [],
   current_sahi: '',
   current_landmark: '',
@@ -247,6 +262,7 @@ const EMPTY: FormData = {
   joining_date_exact: true,
   joining_year: '',
   joining_date: '',
+  hobby: '',
 };
 
 // ─── Primitive components ─────────────────────────────────────────────────────
@@ -653,6 +669,118 @@ const jpm = StyleSheet.create({
   doneTxt: { fontSize: 15, fontFamily: 'Poppins_700Bold', color: '#fff' },
 });
 
+function DobField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const parts = value.split('/');
+  const [d, setD] = useState(parts[0] || '');
+  const [m, setM] = useState(parts[1] || '');
+  const [y, setY] = useState(parts[2] || '');
+
+  useEffect(() => {
+    const p2 = value.split('/');
+    setD(p2[0] || '');
+    setM(p2[1] || '');
+    setY(p2[2] || '');
+  }, [value, open]);
+
+  const days = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'));
+  const months = [
+    { label: 'Jan', val: '01' }, { label: 'Feb', val: '02' }, { label: 'Mar', val: '03' },
+    { label: 'Apr', val: '04' }, { label: 'May', val: '05' }, { label: 'Jun', val: '06' },
+    { label: 'Jul', val: '07' }, { label: 'Aug', val: '08' }, { label: 'Sep', val: '09' },
+    { label: 'Oct', val: '10' }, { label: 'Nov', val: '11' }, { label: 'Dec', val: '12' },
+  ];
+  const curYear = new Date().getFullYear();
+  const years = Array.from({ length: 100 }, (_, i) => String(curYear - i));
+
+  const latestY = useRef(y);
+  useEffect(() => { latestY.current = y; }, [y]);
+
+  const hasVal = !!(d && m && y);
+
+  return (
+    <View style={p.fieldWrap}>
+      <Label text={label} />
+      <TouchableOpacity
+        style={[p.input, s.dobTrigger]}
+        onPress={() => setOpen(true)}
+        activeOpacity={0.75}
+      >
+        <Calendar color={hasVal ? T.primary : T.inkQuaternary} size={16} />
+        <Text style={hasVal ? s.dobTriggerTxt : s.dobTriggerPh}>
+          {hasVal ? `${d} / ${m} / ${y}` : (placeholder || 'Select date of birth')}
+        </Text>
+        {hasVal && (
+          <TouchableOpacity onPress={() => { onChange(''); setD(''); setM(''); setY(''); }} hitSlop={8}>
+            <X color={T.inkTertiary} size={14} />
+          </TouchableOpacity>
+        )}
+      </TouchableOpacity>
+      <Modal visible={open} animationType="slide" transparent onRequestClose={() => setOpen(false)}>
+        <View style={sel.overlay}>
+          <View style={[sel.sheet, { maxHeight: '55%' }]}>
+            <View style={sel.sheetHead}>
+              <Text style={sel.sheetTitle}>{label}</Text>
+              <TouchableOpacity onPress={() => setOpen(false)} style={sel.sheetClose}>
+                <X color={T.inkSecondary} size={20} />
+              </TouchableOpacity>
+            </View>
+            <View style={jpm.pickerWrap}>
+              <View style={jpm.seg}>
+                <Text style={jpm.segHdr}>Day</Text>
+                <ScrollView style={jpm.list} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+                  {days.map((day) => (
+                    <TouchableOpacity key={day} style={[jpm.item, d === day && jpm.itemSel]} onPress={() => setD(day)} activeOpacity={0.7}>
+                      <Text style={[jpm.itemTxt, d === day && jpm.itemTxtSel]}>{day}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+              <View style={jpm.sep} />
+              <View style={[jpm.seg, { flex: 1.3 }]}>
+                <Text style={jpm.segHdr}>Month</Text>
+                <ScrollView style={jpm.list} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+                  {months.map(({ label, val }) => (
+                    <TouchableOpacity key={val} style={[jpm.item, m === val && jpm.itemSel]} onPress={() => setM(val)} activeOpacity={0.7}>
+                      <Text style={[jpm.itemTxt, m === val && jpm.itemTxtSel]}>{label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+              <View style={jpm.sep} />
+              <View style={[jpm.seg, { flex: 1.5 }]}>
+                <Text style={jpm.segHdr}>Year</Text>
+                <ScrollView style={jpm.list} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+                  {years.map((yr) => (
+                    <TouchableOpacity key={yr} style={[jpm.item, y === yr && jpm.itemSel]} onPress={() => setY(yr)} activeOpacity={0.7}>
+                      <Text style={[jpm.itemTxt, y === yr && jpm.itemTxtSel]}>{yr}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+            <View style={jpm.footer}>
+              <TouchableOpacity style={jpm.doneBtn} onPress={() => { onChange(`${d}/${m}/${latestY.current}`); setOpen(false); }} activeOpacity={0.8}>
+                <Text style={jpm.doneTxt}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
 function Notice({ text, variant = 'info' }: { text: string; variant?: 'info' | 'warn' }) {
   const bg = variant === 'warn' ? '#FFFBEB' : T.primaryBg;
   const border = variant === 'warn' ? '#FDE68A' : T.primaryBorder;
@@ -901,6 +1029,7 @@ export default function RegisterScreen() {
 
   // Seba step state
   const HIDDEN_SEBAS = ['Singha Dwara', 'Dwara Ghara'];
+  const [sahiList, setSahiList] = useState<string[]>([]);
   const [sebaCategories, setSebaCategories] = useState<SebaCategory[]>([]);
   const [sebaBeddhaMap, setSebaBeddhaMap] = useState<BeddhaMap>({});
   const [sebaSelections, setSebaSelections] = useState<SebaSelections>({});
@@ -1101,17 +1230,24 @@ export default function RegisterScreen() {
           photo_url: s.photo_url || '',
           is_bhagari: s.is_bhagari || false,
           is_baristha_bhai_pua: s.is_baristha_bhai_pua || false,
+          is_bhai_pua: s.is_bhai_pua || false,
+          is_palia: s.is_palia || false,
           blood_group: s.blood_group || '',
           health_card_no: s.health_card_no || '',
           health_card_photo_url: s.health_card_photo_url || '',
           father_name: s.father_name || '',
+          father_dob: s.father_dob || '',
           father_sebayat_id: s.father_sebayat_id || '',
           mother_name: s.mother_name || '',
+          mother_dob: s.mother_dob || '',
           marital_status: s.marital_status || '',
           spouse_name: s.spouse_name || '',
+          spouse_dob: s.spouse_dob || '',
           spouse_photo_url: s.spouse_photo_url || '',
           spouse_father_name: s.spouse_father_name || '',
+          spouse_father_dob: s.spouse_father_dob || '',
           spouse_mother_name: s.spouse_mother_name || '',
+          spouse_mother_dob: s.spouse_mother_dob || '',
           spouse_father_photo_url: s.spouse_father_photo_url || '',
           spouse_mother_photo_url: s.spouse_mother_photo_url || '',
           children: kids ? kids.map((c: any) => ({
@@ -1157,6 +1293,7 @@ export default function RegisterScreen() {
           joining_date_exact: s.joining_date_exact ?? true,
           joining_year: s.joining_year || '',
           joining_date: s.joining_date || '',
+          hobby: s.hobby || '',
         });
       } else {
         // New user — pre-fill primary phone from auth
@@ -1167,10 +1304,30 @@ export default function RegisterScreen() {
     load();
   }, [user]);
 
+  useEffect(() => {
+    if (!form.whatsapp_same_as_primary) return;
+    const primaryPhone = form.primary_phone.replace(/^91/, '');
+    if (form.whatsapp_number === primaryPhone) return;
+    setForm((prev) => ({ ...prev, whatsapp_number: primaryPhone }));
+  }, [form.primary_phone, form.whatsapp_same_as_primary, form.whatsapp_number]);
+
   // Auto-save draft to sessionStorage whenever form or step changes
   useEffect(() => {
     if (!loadingExisting) saveDraft(form, step);
   }, [form, step, loadingExisting]);
+
+  // Load active Sahis for the dropdown
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from('sahis')
+        .select('name')
+        .eq('is_active', true)
+        .order('sort_order')
+        .order('name');
+      if (data) setSahiList(data.map((s: any) => s.name));
+    })();
+  }, []);
 
   // Load seba categories + beddha map + existing selections when reaching step 2
   // In change-request mode `step` stays 0; use changeRequestStep instead.
@@ -1233,7 +1390,7 @@ export default function RegisterScreen() {
       if (!form.date_of_birth.trim()) e.date_of_birth = 'Required';
       if (!form.gender) e.gender = 'Please select';
       if (!form.health_card_no.trim()) e.health_card_no = 'Required';
-      else if (!/^[a-zA-Z0-9]{8}$/.test(form.health_card_no.trim())) e.health_card_no = 'Must be exactly 8 characters';
+      else if (!/^\d{1,4}$/.test(form.health_card_no.trim())) e.health_card_no = 'Must be 1-4 digits';
     }
 
     // ── Tab 1: Contact & IDs ─────────────────────────────────────
@@ -1310,8 +1467,8 @@ export default function RegisterScreen() {
 
       const isLastSection = changeRequestIdx >= requestedSteps.length - 1;
       if (isLastSection) {
-        // All sections reviewed — submit
-        submit();
+        // All sections reviewed — show confirmation modal
+        setShowSubmitModal(true);
       } else {
         // Move to next requested section
         const nextIdx = changeRequestIdx + 1;
@@ -1333,7 +1490,7 @@ export default function RegisterScreen() {
       }
       scrollRef.current?.scrollTo({ y: 0, animated: false });
     } else {
-      submit();
+      setShowSubmitModal(true);
     }
   }
 
@@ -1386,15 +1543,20 @@ export default function RegisterScreen() {
       })(),
       gender: form.gender, photo_url: form.photo_url,
       is_bhagari: form.is_bhagari, is_baristha_bhai_pua: form.is_baristha_bhai_pua,
-      blood_group: form.blood_group, health_card_no: form.health_card_no,
+      is_bhai_pua: form.is_bhai_pua, is_palia: form.is_palia,
+      blood_group: form.blood_group, health_card_no: form.health_card_no ? form.health_card_no.padStart(4, '0') : form.health_card_no,
       health_card_photo_url: form.health_card_photo_url,
       whatsapp_number: form.whatsapp_number, email: form.email, primary_phone: form.primary_phone,
       father_name: form.father_name,
+      father_dob: form.father_dob || null,
       father_sebayat_id: form.father_sebayat_id || null,
       mother_name: form.mother_name,
+      mother_dob: form.mother_dob || null,
       marital_status: form.marital_status, spouse_name: form.spouse_name,
+      spouse_dob: form.spouse_dob || null,
       spouse_photo_url: form.spouse_photo_url,
-      spouse_father_name: form.spouse_father_name, spouse_mother_name: form.spouse_mother_name,
+      spouse_father_name: form.spouse_father_name, spouse_father_dob: form.spouse_father_dob || null,
+      spouse_mother_name: form.spouse_mother_name, spouse_mother_dob: form.spouse_mother_dob || null,
       spouse_father_photo_url: form.spouse_father_photo_url,
       spouse_mother_photo_url: form.spouse_mother_photo_url,
       permanent_sahi: form.permanent_sahi, permanent_landmark: form.permanent_landmark,
@@ -1419,6 +1581,7 @@ export default function RegisterScreen() {
       joining_date_exact: form.joining_date_exact,
       joining_year: form.joining_year,
       joining_date: form.joining_date_exact ? form.joining_date : '',
+      hobby: form.hobby,
 
       profile_status: newStatus, submitted_at: new Date().toISOString(), admin_remarks: '', change_section: null, change_sections: null,
     };
@@ -1441,15 +1604,23 @@ export default function RegisterScreen() {
     if (vid.length > 0) ins.push(supabase.from('identity_documents').insert(vid.map((d) => ({ sebayat_id: rowId, ...d }))));
     await Promise.all(ins);
 
-    // Save seba selections
-    await supabase.from('sebayat_seba_selections').delete().eq('sebayat_id', rowId);
-    const sebaRows: { sebayat_id: string; seba_category_id: string; beddha_number: number }[] = [];
-    for (const [catId, nums] of Object.entries(sebaSelections)) {
-      for (const num of nums) {
-        sebaRows.push({ sebayat_id: rowId, seba_category_id: catId, beddha_number: num });
+    // Save seba selections — only if the user actually visited the seba step.
+    // In change-request mode where "seba" is NOT a requested section, sebaSelections
+    // is empty {} because step 2 was never loaded. Deleting+inserting nothing would
+    // wipe existing selections. So we skip the write entirely in that case.
+    const sebaStepVisited = isChangeRequest
+      ? allRequestedSections.includes('seba')
+      : true;
+    if (sebaStepVisited) {
+      await supabase.from('sebayat_seba_selections').delete().eq('sebayat_id', rowId);
+      const sebaRows: { sebayat_id: string; seba_category_id: string; beddha_number: number }[] = [];
+      for (const [catId, nums] of Object.entries(sebaSelections)) {
+        for (const num of nums) {
+          sebaRows.push({ sebayat_id: rowId, seba_category_id: catId, beddha_number: num });
+        }
       }
+      if (sebaRows.length > 0) await supabase.from('sebayat_seba_selections').insert(sebaRows);
     }
-    if (sebaRows.length > 0) await supabase.from('sebayat_seba_selections').insert(sebaRows);
 
     await supabase.from('profile_review_history').insert({ sebayat_id: rowId, from_status: existingStatus || 'draft', to_status: newStatus, remarks: isResub ? 'Resubmitted after changes' : 'Initial submission', changed_by: user!.id });
 
@@ -1513,7 +1684,7 @@ export default function RegisterScreen() {
               <View style={[s.sameCheckBox, form.whatsapp_same_as_primary && s.sameCheckBoxOn]}>
                 {form.whatsapp_same_as_primary && <Check color="#fff" size={11} strokeWidth={3} />}
               </View>
-              <Text style={s.sameCheckLabel}>Same as primary</Text>
+              <Text style={s.sameCheckLabel}>Same as Primary Number</Text>
             </TouchableOpacity>
           </View>
           {form.whatsapp_same_as_primary ? (
@@ -1652,7 +1823,7 @@ export default function RegisterScreen() {
                     )}
                   </View>
                   <TouchableOpacity
-                    style={[s.uploadRow, errors[`id_photo_${i}`] ? s.uploadRowErr : null]}
+                    style={[s.uploadRow, s.idDocUploadRow, errors[`id_photo_${i}`] ? s.uploadRowErr : null]}
                     activeOpacity={0.75}
                     onPress={() => pickAndUpload(`id-doc-${i}`, (url) => {
                       const upd = [...form.id_documents];
@@ -1668,12 +1839,15 @@ export default function RegisterScreen() {
                       <Text style={s.uploadTitle}>{doc.photo_url ? 'Photo uploaded' : 'Upload ID photo'}</Text>
                       <Text style={s.uploadSub}>{doc.photo_url ? 'Tap to replace' : 'Front side · JPG or PNG'}</Text>
                     </View>
-                    {uploadingKey === `id-doc-${i}`
-                      ? <ActivityIndicator size="small" color={T.primary} />
-                      : doc.photo_url
-                        ? <Check color={T.green} size={16} strokeWidth={2.5} />
-                        : <Upload color={T.inkQuaternary} size={16} />
-                    }
+                    <View style={s.idDocUploadAction}>
+                      {uploadingKey === `id-doc-${i}`
+                        ? <ActivityIndicator size="small" color="#fff" />
+                        : doc.photo_url
+                          ? <Check color="#fff" size={15} strokeWidth={2.5} />
+                          : <Upload color="#fff" size={15} strokeWidth={2.5} />
+                      }
+                      <Text style={s.idDocUploadActionText}>{doc.photo_url ? 'Replace' : 'Upload'}</Text>
+                    </View>
                   </TouchableOpacity>
                   {errors[`id_photo_${i}`] ? <Text style={[p.errMsg, { marginTop: 4 }]}>{errors[`id_photo_${i}`]}</Text> : null}
                 </View>
@@ -1859,35 +2033,35 @@ export default function RegisterScreen() {
         </View>
 
         {/* ── Status card ── */}
-        <View style={p.fieldWrap}>
-          <Label text="Sebayat Status" />
-          <View style={s.radioGroup}>
+        <View style={s.statusSection}>
+          <View style={s.statusHeadingRow}>
+            <View style={s.statusHeadingAccent} />
+            <View style={{ flex: 1 }}>
+              <Label text="Sebayat Status" />
+              <Text style={s.statusHint}>Check all that apply</Text>
+            </View>
+          </View>
+          <View style={s.statusOptions}>
             {[
-              { label: 'Bhagari', desc: 'Participates in Bhagari seba', key: 'bhagari' },
-              { label: 'Baristha Bhai Pua', desc: 'Senior sebayat (Baristha Bhai Pua)', key: 'baristha' },
-              { label: 'None', desc: 'Neither of the above', key: 'none' },
+              { label: 'Baristha Bhai Pua', desc: 'Senior sebayat', key: 'is_baristha_bhai_pua' },
+              { label: 'Bhai Pua', desc: 'Bhai Pua sebayat', key: 'is_bhai_pua' },
+              { label: 'Bhagari', desc: 'Participates in Bhagari seba', key: 'is_bhagari' },
+              { label: 'Palia', desc: 'Palia sebayat', key: 'is_palia' },
             ].map((opt) => {
-              const selected =
-                opt.key === 'bhagari' ? form.is_bhagari :
-                  opt.key === 'baristha' ? form.is_baristha_bhai_pua :
-                    !form.is_bhagari && !form.is_baristha_bhai_pua;
+              const selected = form[opt.key as 'is_bhagari' | 'is_baristha_bhai_pua' | 'is_bhai_pua' | 'is_palia'];
               return (
                 <TouchableOpacity
                   key={opt.key}
-                  style={[s.radioRow, selected && s.radioRowSelected]}
+                  style={[s.statusOption, selected && s.statusOptionSelected]}
                   activeOpacity={0.75}
-                  onPress={() => setForm((prev) => ({
-                    ...prev,
-                    is_bhagari: opt.key === 'bhagari',
-                    is_baristha_bhai_pua: opt.key === 'baristha',
-                  }))}
+                  onPress={() => setForm((prev) => ({ ...prev, [opt.key]: !prev[opt.key as 'is_bhagari' | 'is_baristha_bhai_pua' | 'is_bhai_pua' | 'is_palia'] }))}
                 >
-                  <View style={[s.radioCircle, selected && s.radioCircleSelected]}>
-                    {selected && <View style={s.radioDot} />}
+                  <View style={[s.statusCheckbox, selected && s.statusCheckboxSelected]}>
+                    {selected && <Check color="#fff" size={13} strokeWidth={3} />}
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[s.radioLabel, selected && s.radioLabelSelected]}>{opt.label}</Text>
-                    <Text style={s.radioDesc}>{opt.desc}</Text>
+                  <View style={s.statusOptionText}>
+                    <Text style={[s.statusOptionLabel, selected && s.statusOptionLabelSelected]}>{opt.label}</Text>
+                    <Text style={s.statusOptionDesc}>{opt.desc}</Text>
                   </View>
                 </TouchableOpacity>
               );
@@ -1913,8 +2087,8 @@ export default function RegisterScreen() {
             <Field
               label="Health Card No"
               value={form.health_card_no}
-              onChange={(v) => setForm((prev) => ({ ...prev, health_card_no: v.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toUpperCase() }))}
-              placeholder="8-character alphanumeric"
+              onChange={(v) => setForm((prev) => ({ ...prev, health_card_no: v.replace(/\D/g, '').slice(0, 4) }))}
+              placeholder="4-digit number (e.g. 0001)"
               maxLen={8}
               noCap
               required
@@ -1962,21 +2136,26 @@ export default function RegisterScreen() {
         <FatherSearchField
           value={form.father_name}
           linkedId={form.father_sebayat_id}
-          onChange={(name, id) => {
-            setForm((prev) => ({ ...prev, father_name: name, father_sebayat_id: id }));
+          onChange={(name, id, dob) => {
+            setForm((prev) => ({ ...prev, father_name: name, father_sebayat_id: id, father_dob: dob || prev.father_dob }));
             setErrors((prev) => ({ ...prev, father_name: '' }));
           }}
           error={errors.father_name}
         />
+        <DobField label="Father's Date of Birth" value={form.father_dob} onChange={sf('father_dob')} />
         <Field label="Mother's Name" value={form.mother_name} onChange={sf('mother_name')} placeholder="Full name" required error={errors.mother_name} />
+        <DobField label="Mother's Date of Birth" value={form.mother_dob} onChange={sf('mother_dob')} />
         <Chips label="Marital Status" value={form.marital_status} options={['Unmarried', 'Married']} onSelect={sf('marital_status')} required error={errors.marital_status} />
 
         {married && (
           <>
             <Divider title="Spouse Details" />
             <Field label="Spouse's Name" value={form.spouse_name} onChange={sf('spouse_name')} placeholder="Full name" required error={errors.spouse_name} />
+            <DobField label="Spouse's Date of Birth" value={form.spouse_dob} onChange={sf('spouse_dob')} />
             <Field label="Spouse Father's Name" value={form.spouse_father_name} onChange={sf('spouse_father_name')} placeholder="Full name" required error={errors.spouse_father_name} />
+            <DobField label="Spouse Father's Date of Birth" value={form.spouse_father_dob} onChange={sf('spouse_father_dob')} />
             <Field label="Spouse Mother's Name" value={form.spouse_mother_name} onChange={sf('spouse_mother_name')} placeholder="Full name" required error={errors.spouse_mother_name} />
+            <DobField label="Spouse Mother's Date of Birth" value={form.spouse_mother_dob} onChange={sf('spouse_mother_dob')} />
 
             <Divider title="Children" />
             {form.children.map((child, i) => (
@@ -1988,6 +2167,7 @@ export default function RegisterScreen() {
                   </TouchableOpacity>
                 </View>
                 <Field label="Name" value={child.child_name} onChange={(v) => { const u = [...form.children]; u[i] = { ...u[i], child_name: v }; setForm((prev) => ({ ...prev, children: u })); }} placeholder="Full name" />
+                <DobField label="Date of Birth" value={child.date_of_birth} onChange={(v) => { const u = [...form.children]; u[i] = { ...u[i], date_of_birth: v }; setForm((prev) => ({ ...prev, children: u })); }} />
                 <Chips label="Gender" value={child.gender} options={['Male', 'Female']} onSelect={(v) => { const u = [...form.children]; u[i] = { ...u[i], gender: v }; setForm((prev) => ({ ...prev, children: u })); }} />
                 <Chips label="Marital Status" value={child.marital_status} options={['Single', 'Married']} onSelect={(v) => { const u = [...form.children]; u[i] = { ...u[i], marital_status: v }; setForm((prev) => ({ ...prev, children: u })); }} />
               </View>
@@ -2010,7 +2190,7 @@ export default function RegisterScreen() {
     return (
       <>
         <View style={s.row2}>
-          <View style={s.col2}><Field label="Sahi / Mohalla" value={form[k('sahi')]} onChange={sf(k('sahi'))} placeholder="e.g. Badaghara Sahi" required={isPrimary} error={errors[k('sahi')]} /></View>
+          <View style={s.col2}><SelectField label="Sahi" value={form[k('sahi')]} options={sahiList} onChange={sf(k('sahi'))} placeholder="Select Sahi" required={isPrimary} error={errors[k('sahi')]} /></View>
           <View style={s.col2}><Field label="Landmark" value={form[k('landmark')]} onChange={sf(k('landmark'))} placeholder="Nearby landmark" required={isPrimary} error={errors[k('landmark')]} /></View>
           <View style={s.col2}><Field label="Post Office" value={form[k('post_office')]} onChange={sf(k('post_office'))} placeholder="Post office" required={isPrimary} error={errors[k('post_office')]} /></View>
           <View style={s.col2}><Field label="Police Station" value={form[k('police_station')]} onChange={sf(k('police_station'))} placeholder="Police station" required={isPrimary} error={errors[k('police_station')]} /></View>
@@ -2134,21 +2314,32 @@ export default function RegisterScreen() {
           <View key={i} style={s.card}>
             <View style={s.cardHead}>
               <View style={s.cardNum}><Text style={s.cardNumTxt}>{i + 1}</Text></View>
-              <Text style={s.cardHeadTxt}>Occupation</Text>
+              <View style={s.cardHeadInfo}>
+                <Text style={s.cardHeadTxt}>Occupation {i + 1}</Text>
+                <Text style={s.cardHeadSub}>Work and additional activity</Text>
+              </View>
               {form.occupations.length > 1 && (
                 <TouchableOpacity style={s.delBtn} onPress={() => setForm((prev) => ({ ...prev, occupations: prev.occupations.filter((_, idx) => idx !== i) }))} activeOpacity={0.7}>
                   <Trash2 color={T.red} size={15} />
                 </TouchableOpacity>
               )}
             </View>
-            <Field label="Occupation" value={occ.occupation} onChange={(v) => { const u = [...form.occupations]; u[i] = { ...u[i], occupation: v }; setForm((prev) => ({ ...prev, occupations: u })); }} placeholder="e.g. Teacher, Engineer" />
-            <Field label="Extra Curriculum Activity" value={occ.extra_curriculum_activity} onChange={(v) => { const u = [...form.occupations]; u[i] = { ...u[i], extra_curriculum_activity: v }; setForm((prev) => ({ ...prev, occupations: u })); }} placeholder="e.g. Sports coaching" />
+            <View style={s.occupationGrid}>
+              <View style={s.occupationField}>
+                <Field label="Occupation" value={occ.occupation} onChange={(v) => { const u = [...form.occupations]; u[i] = { ...u[i], occupation: v }; setForm((prev) => ({ ...prev, occupations: u })); }} placeholder="e.g. Teacher, Engineer" />
+              </View>
+              <View style={s.occupationField}>
+                <Field label="Extra Curriculum Activity" value={occ.extra_curriculum_activity} onChange={(v) => { const u = [...form.occupations]; u[i] = { ...u[i], extra_curriculum_activity: v }; setForm((prev) => ({ ...prev, occupations: u })); }} placeholder="e.g. Sports coaching" />
+              </View>
+            </View>
           </View>
         ))}
         <TouchableOpacity style={s.addRow} onPress={() => setForm((prev) => ({ ...prev, occupations: [...prev.occupations, { occupation: '', extra_curriculum_activity: '' }] }))} activeOpacity={0.7}>
           <Plus color={T.primary} size={15} />
           <Text style={s.addRowTxt}>Add another occupation</Text>
         </TouchableOpacity>
+
+        <Field label="Hobby" value={form.hobby} onChange={sf('hobby')} placeholder="e.g. Reading, Gardening, Music" multiline />
       </>
     );
   }
@@ -2251,21 +2442,30 @@ export default function RegisterScreen() {
                   activeOpacity={0.75}
                   onPress={() => setSebaExpanded((prev) => ({ ...prev, [cat.id]: !prev[cat.id] }))}
                 >
-                  <Text style={s.sebaCatName}>{isOdia && cat.name_or ? cat.name_or : cat.name}</Text>
-                  <View style={s.sebaCatBadgeRow}>
+                  <View style={s.sebaCatInfo}>
+                    <Text style={s.sebaCatName}>{isOdia && cat.name_or ? cat.name_or : cat.name}</Text>
+                    <Text style={s.sebaCatMeta}>
+                      {catSelectedCount > 0 ? `${catSelectedCount} selected · ` : ''}{count} beddha{count !== 1 ? 's' : ''} available
+                    </Text>
+                  </View>
+                  <View style={s.sebaCatActions}>
                     {catSelectedCount > 0 && (
                       <View style={s.sebaCatSelBadge}>
-                        <Text style={s.sebaCatSelBadgeTxt}>{catSelectedCount} selected</Text>
+                        <Check color="#fff" size={11} strokeWidth={3} />
+                        <Text style={s.sebaCatSelBadgeTxt}>{catSelectedCount}</Text>
                       </View>
                     )}
                     <View style={s.sebaCatCountBadge}>
                       <Text style={s.sebaCatCountTxt}>{count}</Text>
                     </View>
-                    <ChevronRight
-                      color={T.inkTertiary}
-                      size={15}
-                      style={{ transform: [{ rotate: isOpen ? '90deg' : '0deg' }] }}
-                    />
+                    <View style={s.sebaCatArrow}>
+                      <ChevronRight
+                        color={T.primary}
+                        size={17}
+                        strokeWidth={2.5}
+                        style={{ transform: [{ rotate: isOpen ? '90deg' : '0deg' }] }}
+                      />
+                    </View>
                   </View>
                 </TouchableOpacity>
 
@@ -2735,7 +2935,15 @@ interface SebayatOption {
   full_name: string;
   first_name: string;
   last_name: string;
+  alias_name: string | null;
   date_of_birth: string | null;
+}
+
+function formatFatherDob(value: string | null): string | undefined {
+  if (!value) return undefined;
+  const dateOnly = value.split('T')[0];
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateOnly);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
 }
 
 function FatherSearchField({
@@ -2746,7 +2954,7 @@ function FatherSearchField({
 }: {
   value: string;
   linkedId: string;
-  onChange: (name: string, id: string) => void;
+  onChange: (name: string, id: string, dob?: string) => void;
   error?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -2761,8 +2969,8 @@ function FatherSearchField({
     setSearching(true);
     const { data } = await supabase
       .from('sebayats')
-      .select('id, full_name, first_name, last_name, date_of_birth')
-      .or(`full_name.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%`)
+      .select('id, full_name, first_name, last_name, alias_name, date_of_birth')
+      .or(`full_name.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%,alias_name.ilike.%${q}%`)
       .in('profile_status', ['submitted', 'resubmitted', 'approved'])
       .limit(20);
     setResults(data || []);
@@ -2776,19 +2984,41 @@ function FatherSearchField({
   }
 
   function select(item: SebayatOption) {
-    onChange(item.full_name || [item.first_name, item.last_name].filter(Boolean).join(' '), item.id);
+    onChange(
+      item.full_name || [item.first_name, item.last_name].filter(Boolean).join(' '),
+      item.id,
+      formatFatherDob(item.date_of_birth),
+    );
     setOpen(false);
     setQuery('');
     setResults([]);
   }
 
   function clearLink() {
-    onChange('', '');
+    onChange('', '', undefined);
     setManualMode(false);
   }
 
   const linked = !!linkedId;
   const hasManualValue = !linked && !!value;
+
+  useEffect(() => {
+    if (!linkedId) return;
+    let active = true;
+    (async () => {
+      const { data } = await supabase
+        .from('sebayats')
+        .select('date_of_birth')
+        .eq('id', linkedId)
+        .maybeSingle();
+      if (active && data?.date_of_birth) {
+        onChange(value, linkedId, formatFatherDob(data.date_of_birth));
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [linkedId]);
 
   return (
     <View style={p.fieldWrap}>
@@ -2909,6 +3139,7 @@ function FatherSearchField({
                     </View>
                     <View style={fs.resultInfo}>
                       <Text style={fs.resultName}>{displayName}</Text>
+                      {item.alias_name ? <Text style={fs.resultSub}>Alias: {item.alias_name}</Text> : null}
                       {item.date_of_birth ? <Text style={fs.resultSub}>DOB: {item.date_of_birth}</Text> : null}
                     </View>
                     <Check color={T.primary} size={14} />
@@ -3294,6 +3525,29 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   uploadRowErr: { borderColor: T.red, backgroundColor: T.redBg },
+  idDocUploadRow: {
+    minHeight: 76,
+    marginTop: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: T.surfaceHover,
+  },
+  idDocUploadAction: {
+    minWidth: 88,
+    height: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    borderRadius: 9,
+    backgroundColor: T.primary,
+  },
+  idDocUploadActionText: {
+    fontSize: 12,
+    fontFamily: 'Poppins_700Bold',
+    color: '#fff',
+  },
   uploadTitle: { fontSize: 14, fontFamily: 'Poppins_600SemiBold', color: T.ink },
   uploadSub: { fontSize: 12, fontFamily: 'Poppins_400Regular', color: T.inkQuaternary, marginTop: 1 },
   idCardNotice: { fontSize: 13, fontFamily: 'Poppins_400Regular', color: T.inkSecondary, marginBottom: 16, lineHeight: 20 },
@@ -3551,6 +3805,90 @@ const s = StyleSheet.create({
   toggleSep: { height: 1, backgroundColor: T.line, marginHorizontal: 14 },
   toggleText: { flex: 1, gap: 1 },
   toggleLabel: { fontSize: 14, fontFamily: 'Poppins_600SemiBold', color: T.ink },
+  statusSection: {
+    marginBottom: 24,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: T.line,
+    borderRadius: 14,
+    backgroundColor: T.surface,
+  },
+  statusHeadingRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 14,
+  },
+  statusHeadingAccent: {
+    width: 4,
+    height: 34,
+    borderRadius: 2,
+    backgroundColor: T.primary,
+    marginTop: 2,
+  },
+  statusHint: {
+    marginTop: 2,
+    fontSize: 12,
+    fontFamily: 'Poppins_400Regular',
+    color: T.inkTertiary,
+  },
+  statusOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  statusOption: {
+    width: '48%',
+    minHeight: 62,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: T.line,
+    borderRadius: 10,
+    backgroundColor: T.surfaceHover,
+  },
+  statusOptionSelected: {
+    borderColor: T.primary,
+    backgroundColor: T.primary + '0D',
+  },
+  statusCheckbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: T.inkQuaternary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    backgroundColor: T.surface,
+  },
+  statusCheckboxSelected: {
+    borderColor: T.primary,
+    backgroundColor: T.primary,
+  },
+  statusOptionText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  statusOptionLabel: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: 'Poppins_600SemiBold',
+    color: T.ink,
+  },
+  statusOptionLabelSelected: {
+    color: T.primary,
+  },
+  statusOptionDesc: {
+    marginTop: 2,
+    fontSize: 11,
+    lineHeight: 15,
+    fontFamily: 'Poppins_400Regular',
+    color: T.inkTertiary,
+  },
   radioGroup: { gap: 10 },
   radioRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
@@ -3565,6 +3903,12 @@ const s = StyleSheet.create({
   },
   radioCircleSelected: { borderColor: T.primary },
   radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: T.primary },
+  radioSquare: {
+    width: 22, height: 22, borderRadius: 6,
+    borderWidth: 2, borderColor: T.line,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  radioSquareSelected: { borderColor: T.primary, backgroundColor: T.primary },
   radioLabel: { fontSize: 14, fontFamily: 'Poppins_600SemiBold', color: T.ink },
   radioLabelSelected: { color: T.primary },
   radioDesc: { fontSize: 12, fontFamily: 'Poppins_400Regular', color: T.inkTertiary, marginTop: 1 },
@@ -3579,11 +3923,21 @@ const s = StyleSheet.create({
     backgroundColor: T.surface,
     borderWidth: 1.5,
     borderColor: T.line,
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 14,
+    padding: 20,
     marginBottom: 14,
   },
-  cardHead: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 },
+  cardHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingBottom: 14,
+    marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: T.line,
+  },
+  cardHeadInfo: { flex: 1, gap: 2 },
+  cardHeadSub: { fontSize: 11, fontFamily: 'Poppins_400Regular', color: T.inkQuaternary },
   cardNum: {
     width: 24,
     height: 24,
@@ -3593,7 +3947,9 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   cardNumTxt: { fontSize: 11, fontFamily: 'Poppins_700Bold', color: T.primary },
-  cardHeadTxt: { flex: 1, fontSize: 13, fontFamily: 'Poppins_700Bold', color: T.inkSecondary },
+  cardHeadTxt: { fontSize: 14, fontFamily: 'Poppins_700Bold', color: T.ink },
+  occupationGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
+  occupationField: { flexGrow: 1, flexBasis: 260, minWidth: 220 },
 
   // Delete button
   delBtn: {
@@ -3695,31 +4051,53 @@ const s = StyleSheet.create({
     overflow: 'hidden',
   },
   sebaCatHeader: {
+    minHeight: 76,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 16,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: T.canvas,
+    paddingVertical: 14,
+    backgroundColor: T.surface,
     borderBottomWidth: 1,
     borderBottomColor: T.line,
   },
-  sebaCatName: { flex: 1, fontSize: 13, fontFamily: 'Poppins_700Bold', color: T.inkSecondary, letterSpacing: 0.3 },
-  sebaCatBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  sebaCatInfo: { flex: 1, minWidth: 0, gap: 4 },
+  sebaCatName: { fontSize: 14, lineHeight: 20, fontFamily: 'Poppins_700Bold', color: T.ink, letterSpacing: 0.1 },
+  sebaCatMeta: { fontSize: 11, lineHeight: 16, fontFamily: 'Poppins_400Regular', color: T.inkTertiary },
+  sebaCatActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sebaCatSelBadge: {
+    minWidth: 28,
+    height: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
     backgroundColor: T.primary,
-    borderRadius: 20,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    borderRadius: 14,
+    paddingHorizontal: 7,
   },
-  sebaCatSelBadgeTxt: { fontSize: 10, fontFamily: 'Poppins_700Bold', color: '#fff' },
+  sebaCatSelBadgeTxt: { fontSize: 11, fontFamily: 'Poppins_700Bold', color: '#fff' },
   sebaCatCountBadge: {
-    backgroundColor: T.line,
-    borderRadius: 20,
+    minWidth: 34,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: T.primaryBg,
+    borderWidth: 1,
+    borderColor: T.primaryBorder,
+    borderRadius: 8,
     paddingHorizontal: 8,
-    paddingVertical: 2,
   },
-  sebaCatCountTxt: { fontSize: 10, fontFamily: 'Poppins_600SemiBold', color: T.inkTertiary },
+  sebaCatCountTxt: { fontSize: 12, fontFamily: 'Poppins_700Bold', color: T.primary },
+  sebaCatArrow: {
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 15,
+    backgroundColor: T.primaryBg,
+  },
 
   // Beddha grid
   sebaBeddhaGrid: {

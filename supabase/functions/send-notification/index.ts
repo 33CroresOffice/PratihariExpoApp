@@ -110,6 +110,55 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // ── In-App notification ───────────────────────────────────────────────────
+    if (
+      featureConfig.inapp_enabled &&
+      channelMap["inapp"]?.enabled &&
+      recipient_sebayat_id &&
+      recipient_type === "sebayat"
+    ) {
+      try {
+        const inappTitle = applyTemplate(
+          featureConfig.inapp_title_template || featureConfig.label,
+          template_vars
+        );
+        const inappBody = applyTemplate(
+          featureConfig.inapp_body_template || featureConfig.sms_template || "",
+          template_vars
+        );
+
+        await supabase.from("sebayat_notifications").insert({
+          sebayat_id: recipient_sebayat_id,
+          event_key: event,
+          title: inappTitle,
+          body: inappBody,
+          reference_type: template_vars.reference_type ?? null,
+          reference_id: template_vars.reference_id ?? null,
+          is_read: false,
+        });
+
+        await supabase.from("notification_log").insert({
+          event_key: event,
+          channel: "inapp",
+          recipient_type,
+          recipient_sebayat_id: recipient_sebayat_id ?? null,
+          status: "sent",
+        });
+
+        results.inapp = "sent";
+      } catch (err) {
+        await supabase.from("notification_log").insert({
+          event_key: event,
+          channel: "inapp",
+          recipient_type,
+          recipient_sebayat_id: recipient_sebayat_id ?? null,
+          status: "failed",
+          error_message: String(err),
+        });
+        results.inapp = "failed";
+      }
+    }
+
     // ── SMS ───────────────────────────────────────────────────────────────────
     if (
       featureConfig.sms_enabled &&

@@ -36,11 +36,15 @@ import {
   CalendarDays,
   X,
   Search,
+  Users,
+  Wifi,
+  WifiOff,
 } from 'lucide-react-native';
 
 const C = {
   saffron: '#E8732A',
   gold: '#D4A843',
+  teal: '#2A8F8F',
   cream: '#FFF8F0',
   warmWhite: '#FFFDF9',
   textPrimary: '#2D1810',
@@ -58,13 +62,20 @@ const MONTHS = [
 ];
 
 type MyPali = {
+  assignment_id?: string;
   service_date: string;
+  sebayat_id?: string;
+  sebayat_name?: string;
+  substitute_sebayat_name?: string | null;
   seba_name: string;
   seba_name_or: string | null;
   group_name: string;
   group_name_or: string | null;
   beddha_number: number;
   is_nijog: boolean;
+  is_absent?: boolean;
+  notes?: string | null;
+  is_mine?: boolean;
 };
 
 function formatDate(dateStr: string) {
@@ -202,7 +213,8 @@ function DutyDetailModal({
           </View>
           {duties.map((d, i) => {
             const isGochhikar = d.group_name.toLowerCase().includes('gochhikar');
-            const accent = isGochhikar ? C.gold : C.saffron;
+            const isMine = d.is_mine === true;
+            const accent = isMine ? C.saffron : isGochhikar ? C.gold : C.teal;
             const sebaName = isOdia && d.seba_name_or ? d.seba_name_or : d.seba_name;
             const groupName = isOdia && d.group_name_or ? d.group_name_or : d.group_name;
             return (
@@ -216,6 +228,14 @@ function DutyDetailModal({
                 >
                   <View style={modalStyles.dutyNameRow}>
                     <Text style={[modalStyles.dutySebaName, isOdia ? { fontFamily: 'NotoSansOriya_700Bold' as const } : {}]}>{sebaName}</Text>
+                    <View style={[modalStyles.assignmentBadge, { backgroundColor: accent + '20', borderColor: accent + '50' }]}>
+                      <Text style={[modalStyles.assignmentBadgeText, { color: accent }, odiaFont]}>{isMine ? t('schedule.yourSeba') : t('schedule.otherSeba')}</Text>
+                    </View>
+                    {d.is_absent && (
+                      <View style={[modalStyles.assignmentBadge, { backgroundColor: '#FFF5F5', borderColor: '#C0392B50' }]}>
+                        <Text style={[modalStyles.assignmentBadgeText, { color: '#C0392B' }, odiaFont]}>{t('schedule.absent')}</Text>
+                      </View>
+                    )}
                     {d.is_nijog && (
                       <View style={[modalStyles.nijogBadge, { backgroundColor: accent + '20', borderColor: accent + '50' }]}>
                         <Text style={[modalStyles.nijogBadgeText, { color: accent }, odiaFont]}>{t('schedule.nijog')}</Text>
@@ -223,6 +243,8 @@ function DutyDetailModal({
                     )}
                   </View>
                   <View style={modalStyles.dutyMeta}>
+                    {d.sebayat_name && <Text style={[modalStyles.assignedName, odiaFont]}>{d.sebayat_name}</Text>}
+                    {d.substitute_sebayat_name && <Text style={[modalStyles.substituteName, odiaFont]}>{t('schedule.substitute')}: {d.substitute_sebayat_name}</Text>}
                     <View style={[modalStyles.groupChip, { backgroundColor: accent + '20' }]}>
                       <Text style={[modalStyles.groupChipText, { color: accent }]}>{groupName}</Text>
                     </View>
@@ -231,6 +253,7 @@ function DutyDetailModal({
                       <Text style={[modalStyles.beddhaText, { color: accent }, odiaFont]}>{t('schedule.beddha')} {formatNumber(d.beddha_number, i18n.language as any)}</Text>
                     </View>
                   </View>
+                  {d.notes ? <Text style={[modalStyles.assignmentNotes, odiaFont]}>{d.notes}</Text> : null}
                 </LinearGradient>
               </View>
             );
@@ -241,7 +264,25 @@ function DutyDetailModal({
   );
 }
 
-function CalendarView({ palis }: { palis: MyPali[] }) {
+type CalendarMode = 'mine' | 'all';
+
+function CalendarView({
+  palis,
+  allPalis,
+  calendarMode,
+  onModeChange,
+  isOnline,
+  allLoading,
+  onMonthChange,
+}: {
+  palis: MyPali[];
+  allPalis: MyPali[];
+  calendarMode: CalendarMode;
+  onModeChange: (m: CalendarMode) => void;
+  isOnline: boolean;
+  allLoading: boolean;
+  onMonthChange: (year: number, month: number) => void;
+}) {
   const { t, i18n } = useTranslation();
   const isOdia = i18n.language === 'or';
   const odiaFont = isOdia ? { fontFamily: 'NotoSansOriya_400Regular' as const } : {};
@@ -253,19 +294,30 @@ function CalendarView({ palis }: { palis: MyPali[] }) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showGoTo, setShowGoTo] = useState(false);
 
-  const dutyDateSet = new Set(palis.map((p) => p.service_date));
+  const isAllMode = calendarMode === 'all';
+  const activePalis = isAllMode ? allPalis : palis;
+
+  const myDateSet = new Set(palis.map((p) => p.service_date));
+  const allDateSet = new Set(allPalis.map((p) => p.service_date));
+  const otherOnlyDateSet = new Set(
+    [...allDateSet].filter((d) => !myDateSet.has(d))
+  );
 
   function prevMonth() {
-    if (month === 0) { setMonth(11); setYear((y) => y - 1); }
-    else setMonth((m) => m - 1);
+    const ny = month === 0 ? year - 1 : year;
+    const nm = month === 0 ? 11 : month - 1;
+    setYear(ny); setMonth(nm);
+    if (isAllMode) onMonthChange(ny, nm);
   }
   function nextMonth() {
-    if (month === 11) { setMonth(0); setYear((y) => y + 1); }
-    else setMonth((m) => m + 1);
+    const ny = month === 11 ? year + 1 : year;
+    const nm = month === 11 ? 0 : month + 1;
+    setYear(ny); setMonth(nm);
+    if (isAllMode) onMonthChange(ny, nm);
   }
   function goToDate(y: number, m: number) {
-    setYear(y);
-    setMonth(m);
+    setYear(y); setMonth(m);
+    if (isAllMode) onMonthChange(y, m);
   }
 
   const firstDay = new Date(year, month, 1).getDay();
@@ -280,7 +332,29 @@ function CalendarView({ palis }: { palis: MyPali[] }) {
     return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   }
 
-  const selectedDuties = selectedDate ? palis.filter((p) => p.service_date === selectedDate) : [];
+  const selectedDuties = selectedDate
+    ? activePalis
+        .filter((p) => p.service_date === selectedDate)
+        .map((p) => ({
+          ...p,
+          is_mine: myDateSet.has(p.service_date) && p.sebayat_id === undefined
+            ? true
+            : p.is_mine ?? false,
+        }))
+        .sort((a, b) => {
+          if (a.is_mine && !b.is_mine) return -1;
+          if (!a.is_mine && b.is_mine) return 1;
+          return a.beddha_number - b.beddha_number;
+        })
+    : [];
+
+  function handleCellPress(ds: string, hasAnyDuty: boolean) {
+    if (isAllMode) {
+      if (allDateSet.has(ds)) setSelectedDate(ds);
+    } else {
+      if (myDateSet.has(ds)) setSelectedDate(ds);
+    }
+  }
 
   return (
     <>
@@ -296,13 +370,47 @@ function CalendarView({ palis }: { palis: MyPali[] }) {
       />
 
       <View style={calStyles.wrap}>
+        {/* My / All toggle */}
+        <View style={calStyles.toggleRow}>
+          <TouchableOpacity
+            style={[calStyles.toggleBtn, !isAllMode && calStyles.toggleBtnActive]}
+            onPress={() => onModeChange('mine')}
+            activeOpacity={0.7}
+          >
+            <Star color={!isAllMode ? '#fff' : C.saffron} size={14} fill={!isAllMode ? '#fff' : C.saffron} strokeWidth={0} />
+            <Text style={[calStyles.toggleBtnText, !isAllMode && calStyles.toggleBtnTextActive, odiaFont]}>{t('schedule.mySeba')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[calStyles.toggleBtn, isAllMode && calStyles.toggleBtnActive]}
+            onPress={() => onModeChange('all')}
+            activeOpacity={0.7}
+          >
+            <Users color={isAllMode ? '#fff' : C.teal} size={15} />
+            <Text style={[calStyles.toggleBtnText, isAllMode && calStyles.toggleBtnTextActive, odiaFont]}>{t('schedule.allSeba')}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Online/offline notice for All mode */}
+        {isAllMode && (
+          <View style={calStyles.allSebaNotice}>
+            {isOnline
+              ? <Wifi color={C.teal} size={12} />
+              : <WifiOff color={C.teal} size={12} />}
+            <Text style={[calStyles.allSebaNoticeText, odiaFont]}>
+              {isOnline
+                ? (allLoading ? t('schedule.allSebaLoading') : t('schedule.allSebaOnline'))
+                : t('schedule.allSebaOffline')}
+            </Text>
+          </View>
+        )}
+
         {/* Month navigator */}
         <View style={calStyles.nav}>
           <TouchableOpacity onPress={prevMonth} style={calStyles.navBtn} activeOpacity={0.7}>
             <ChevronLeft color={C.textSecondary} size={20} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setShowGoTo(true)} activeOpacity={0.75}>
-            <Text style={[calStyles.navTitle, odiaFont]}>{MONTHS_LOC[month]} {formatNumber(year, i18n.language as any)}</Text>
+          <TouchableOpacity style={calStyles.navTitleButton} onPress={() => setShowGoTo(true)} activeOpacity={0.75}>
+            <Text style={[calStyles.navTitle, odiaFont]} numberOfLines={1}>{MONTHS_LOC[month]} {formatNumber(year, i18n.language as any)}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={nextMonth} style={calStyles.navBtn} activeOpacity={0.7}>
             <ChevronRight color={C.textSecondary} size={20} />
@@ -327,32 +435,64 @@ function CalendarView({ palis }: { palis: MyPali[] }) {
           {cells.map((day, i) => {
             if (day === null) return <View key={`blank-${i}`} style={calStyles.cell} />;
             const ds = makeDateStr(day);
-            const hasDuty = dutyDateSet.has(ds);
+            const hasMyDuty = myDateSet.has(ds);
+            const hasOtherDuty = isAllMode && otherOnlyDateSet.has(ds);
+            const hasAnyDuty = isAllMode ? allDateSet.has(ds) : hasMyDuty;
             const isTodayCell = ds === todayStr;
             const isSelected = ds === selectedDate;
+            const isTodayDuty = isTodayCell && hasMyDuty;
+            const isTodayOtherDuty = isTodayCell && hasOtherDuty && !hasMyDuty;
             return (
               <TouchableOpacity
                 key={ds}
                 style={[
                   calStyles.cell,
-                  isTodayCell && calStyles.cellToday,
+                  hasMyDuty && !isTodayCell && !isSelected && calStyles.cellDuty,
+                  isTodayDuty && !isSelected && calStyles.cellTodayDuty,
+                  hasOtherDuty && !hasMyDuty && !isTodayCell && !isSelected && calStyles.cellOtherDuty,
+                  isTodayOtherDuty && !isSelected && calStyles.cellTodayOtherDuty,
+                  isTodayCell && !hasAnyDuty && calStyles.cellToday,
                   isSelected && calStyles.cellSelected,
                 ]}
-                onPress={() => hasDuty ? setSelectedDate(ds) : null}
-                activeOpacity={hasDuty ? 0.75 : 1}
+                onPress={() => handleCellPress(ds, hasAnyDuty)}
+                activeOpacity={hasAnyDuty ? 0.75 : 1}
               >
+                {hasAnyDuty && !isSelected && (
+                  <View style={[
+                    calStyles.dutyBadge,
+                    isTodayDuty && calStyles.dutyBadgeToday,
+                    hasOtherDuty && !hasMyDuty && calStyles.dutyBadgeOther,
+                    isTodayOtherDuty && calStyles.dutyBadgeToday,
+                  ]}>
+                    <Star
+                      color={isTodayDuty || isTodayOtherDuty ? '#fff' : hasMyDuty ? C.saffron : C.teal}
+                      size={7}
+                      fill={isTodayDuty || isTodayOtherDuty ? '#fff' : hasMyDuty ? C.saffron : C.teal}
+                      strokeWidth={0}
+                    />
+                  </View>
+                )}
                 <Text
                   style={[
                     calStyles.cellText,
-                    isTodayCell && calStyles.cellTextToday,
+                    hasMyDuty && !isTodayCell && !isSelected && calStyles.cellTextDuty,
+                    hasOtherDuty && !hasMyDuty && !isTodayCell && !isSelected && calStyles.cellTextOtherDuty,
+                    isTodayCell && !hasAnyDuty && calStyles.cellTextToday,
+                    isTodayDuty && !isSelected && calStyles.cellTextTodayDuty,
+                    isTodayOtherDuty && !isSelected && calStyles.cellTextTodayOtherDuty,
                     isSelected && calStyles.cellTextSelected,
                     isOdia && { fontFamily: 'NotoSansOriya_400Regular' as const },
                   ]}
                 >
                   {formatNumber(day, i18n.language as any)}
                 </Text>
-                {hasDuty && (
-                  <View style={[calStyles.dutyDot, isSelected && { backgroundColor: '#fff' }]} />
+                {hasAnyDuty && (
+                  <View style={[
+                    calStyles.dutyDot,
+                    isSelected && { backgroundColor: '#fff' },
+                    (isTodayDuty || isTodayOtherDuty) && !isSelected && { backgroundColor: '#fff' },
+                    hasOtherDuty && !hasMyDuty && !isTodayCell && !isSelected && { backgroundColor: C.teal },
+                  ]} />
                 )}
               </TouchableOpacity>
             );
@@ -362,8 +502,24 @@ function CalendarView({ palis }: { palis: MyPali[] }) {
         {/* Legend */}
         <View style={calStyles.legend}>
           <View style={calStyles.legendItem}>
-            <View style={[calStyles.dutyDot, { marginTop: 0 }]} />
+            <View style={calStyles.legendDutySample}>
+              <Star color={C.saffron} size={7} fill={C.saffron} strokeWidth={0} />
+            </View>
             <Text style={[calStyles.legendText, odiaFont]}>{t('schedule.dutyDay')}</Text>
+          </View>
+          {isAllMode && (
+            <View style={calStyles.legendItem}>
+              <View style={calStyles.legendOtherDutySample}>
+                <Star color={C.teal} size={7} fill={C.teal} strokeWidth={0} />
+              </View>
+              <Text style={[calStyles.legendText, odiaFont]}>{t('schedule.otherDutyDay')}</Text>
+            </View>
+          )}
+          <View style={calStyles.legendItem}>
+            <View style={calStyles.legendTodayDutySample}>
+              <Star color="#fff" size={7} fill="#fff" strokeWidth={0} />
+            </View>
+            <Text style={[calStyles.legendText, odiaFont]}>{t('schedule.todayDuty', { defaultValue: 'Today\'s Pali' })}</Text>
           </View>
         </View>
       </View>
@@ -389,9 +545,13 @@ export default function ScheduleScreen() {
   const [loading, setLoading] = useState(true);
   const [approved, setApproved] = useState(false);
   const [myPalis, setMyPalis] = useState<MyPali[]>([]);
+  const [allPalis, setAllPalis] = useState<MyPali[]>([]);
+  const [calendarMode, setCalendarMode] = useState(false);
+  const [calViewMode, setCalViewMode] = useState<CalendarMode>('mine');
+  const [allLoading, setAllLoading] = useState(false);
+  const [allLoadedMonth, setAllLoadedMonth] = useState<string | null>(null);
   const [showPast, setShowPast] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const [calendarMode, setCalendarMode] = useState(false);
   const [syncedAt, setSyncedAt] = useState<number | null>(null);
 
   useEffect(() => {
@@ -518,6 +678,53 @@ export default function ScheduleScreen() {
     setSyncedAt(Date.now());
   }
 
+  async function fetchAllPalis(y: number, m: number) {
+    if (!isOnline) return;
+    const monthKey = `${y}-${String(m + 1).padStart(2, '0')}`;
+    if (allLoadedMonth === monthKey && allPalis.length > 0) return;
+    setAllLoading(true);
+    const start = new Date(y, m, 1);
+    const end = new Date(y, m + 1, 0);
+    const startDate = start.toISOString().split('T')[0];
+    const endDate = end.toISOString().split('T')[0];
+    const { data, error } = await supabase.rpc('get_seba_calendar_assignments', {
+      p_start_date: startDate,
+      p_end_date: endDate,
+    });
+    if (error) {
+      setAllLoading(false);
+      return;
+    }
+    const myId = user?.id;
+    const rows: MyPali[] = ((data as any[]) ?? []).map((r) => ({
+      assignment_id: r.assignment_id,
+      service_date: r.service_date,
+      sebayat_id: r.sebayat_id,
+      sebayat_name: r.sebayat_name,
+      substitute_sebayat_name: r.substitute_sebayat_name,
+      seba_name: r.seba_name,
+      seba_name_or: r.seba_name_or,
+      group_name: r.group_name,
+      group_name_or: r.group_name_or,
+      beddha_number: r.beddha_number,
+      is_nijog: r.is_nijog,
+      is_absent: r.is_absent,
+      notes: r.notes,
+      is_mine: false,
+    }));
+    const myDateSet = new Set(myPalis.map((p) => p.service_date));
+    for (const r of rows) {
+      r.is_mine = myDateSet.has(r.service_date);
+    }
+    setAllPalis(rows);
+    setAllLoadedMonth(monthKey);
+    setAllLoading(false);
+  }
+
+  function handleAllMonthChange(y: number, m: number) {
+    fetchAllPalis(y, m);
+  }
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -604,7 +811,21 @@ export default function ScheduleScreen() {
       <View style={styles.contentWrapper}>
       {calendarMode ? (
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.listContent}>
-          <CalendarView palis={myPalis} />
+          <CalendarView
+            palis={myPalis}
+            allPalis={allPalis}
+            calendarMode={calViewMode}
+            onModeChange={(m) => {
+              setCalViewMode(m);
+              if (m === 'all' && isOnline) {
+                const now = new Date();
+                fetchAllPalis(now.getFullYear(), now.getMonth());
+              }
+            }}
+            isOnline={isOnline}
+            allLoading={allLoading}
+            onMonthChange={handleAllMonthChange}
+          />
           <View style={{ height: 32 }} />
         </ScrollView>
       ) : (
@@ -822,9 +1043,9 @@ const calStyles = StyleSheet.create({
     marginBottom: 16,
   },
   nav: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
@@ -833,15 +1054,24 @@ const calStyles = StyleSheet.create({
   navBtn: {
     width: 36,
     height: 36,
+    flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 10,
     backgroundColor: C.cream,
   },
+  navTitleButton: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
   navTitle: {
     fontSize: 16,
     fontFamily: 'Poppins_700Bold',
     color: C.textPrimary,
+    textAlign: 'center',
   },
   dayHeaderRow: {
     flexDirection: 'row',
@@ -877,8 +1107,47 @@ const calStyles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: C.saffron + '60',
   },
+  cellDuty: {
+    backgroundColor: C.saffron + '14',
+    borderWidth: 1.5,
+    borderColor: C.saffron + '50',
+  },
+  cellTodayDuty: {
+    backgroundColor: C.saffron,
+    borderWidth: 2,
+    borderColor: C.gold,
+  },
+  cellTodayOtherDuty: {
+    backgroundColor: C.teal,
+    borderWidth: 2,
+    borderColor: C.gold,
+  },
   cellSelected: {
     backgroundColor: C.saffron,
+    borderWidth: 2,
+    borderColor: C.gold,
+    elevation: 3,
+    shadowColor: C.saffron,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  dutyBadge: {
+    position: 'absolute' as any,
+    top: 3,
+    right: 4,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: C.saffron + '20',
+    alignItems: 'center' as any,
+    justifyContent: 'center' as any,
+  },
+  dutyBadgeToday: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  dutyBadgeOther: {
+    backgroundColor: C.teal + '20',
   },
   cellText: {
     fontSize: 13,
@@ -887,6 +1156,18 @@ const calStyles = StyleSheet.create({
   },
   cellTextToday: {
     color: C.saffron,
+    fontFamily: 'Poppins_700Bold',
+  },
+  cellTextDuty: {
+    color: C.saffron,
+    fontFamily: 'Poppins_700Bold',
+  },
+  cellTextTodayDuty: {
+    color: '#fff',
+    fontFamily: 'Poppins_700Bold',
+  },
+  cellTextTodayOtherDuty: {
+    color: '#fff',
     fontFamily: 'Poppins_700Bold',
   },
   cellTextSelected: {
@@ -923,11 +1204,102 @@ const calStyles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     paddingTop: 10,
+    marginRight: 16,
+  },
+  legendDutySample: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: C.saffron + '14',
+    borderWidth: 1.5,
+    borderColor: C.saffron + '50',
+    alignItems: 'center' as any,
+    justifyContent: 'center' as any,
+  },
+  legendTodayDutySample: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: C.saffron,
+    borderWidth: 2,
+    borderColor: C.gold,
+    alignItems: 'center' as any,
+    justifyContent: 'center' as any,
   },
   legendText: {
     fontSize: 11,
     fontFamily: 'Poppins_400Regular',
     color: C.textMuted,
+  },
+  toggleRow: {
+    width: '100%',
+    flexDirection: 'row' as const,
+    alignItems: 'stretch' as const,
+    backgroundColor: C.cream,
+    borderRadius: 10,
+    padding: 4,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  toggleBtn: {
+    flex: 1 as const,
+    minWidth: 0,
+    flexDirection: 'row' as const,
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  toggleBtnActive: {
+    backgroundColor: C.saffron,
+  },
+  toggleBtnText: {
+    fontSize: 13,
+    fontFamily: 'Poppins_600SemiBold',
+    color: C.textSecondary,
+  },
+  toggleBtnTextActive: {
+    color: '#fff',
+  },
+  allSebaNotice: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 8,
+    backgroundColor: C.teal + '12',
+    borderRadius: 8,
+  },
+  allSebaNoticeText: {
+    fontSize: 11,
+    fontFamily: 'Poppins_400Regular',
+    color: C.teal,
+  },
+  cellOtherDuty: {
+    backgroundColor: C.teal + '12',
+    borderWidth: 1.5,
+    borderColor: C.teal + '50',
+  },
+  cellTextOtherDuty: {
+    color: C.teal,
+    fontFamily: 'Poppins_700Bold',
+  },
+  legendOtherDutySample: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: C.teal + '12',
+    borderWidth: 1.5,
+    borderColor: C.teal + '50',
+    alignItems: 'center' as any,
+    justifyContent: 'center' as any,
+  },
+  loadingOverlay: {
+    paddingVertical: 12,
+    alignItems: 'center' as const,
   },
 });
 
@@ -1108,6 +1480,34 @@ const modalStyles = StyleSheet.create({
     gap: 10,
     flexWrap: 'wrap',
   },
+  assignedName: {
+    fontSize: 14,
+    fontFamily: 'Poppins_600SemiBold',
+    color: C.textPrimary,
+  },
+  substituteName: {
+    fontSize: 12,
+    fontFamily: 'Poppins_400Regular',
+    color: C.textSecondary,
+  },
+  assignmentNotes: {
+    fontSize: 12,
+    fontFamily: 'Poppins_400Regular',
+    color: C.textSecondary,
+    fontStyle: 'italic' as const,
+    marginTop: 4,
+  },
+  assignmentBadge: {
+    borderRadius: 5,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderWidth: 1,
+  },
+  assignmentBadgeText: {
+    fontSize: 10,
+    fontFamily: 'Poppins_700Bold',
+    letterSpacing: 1,
+  },
   groupChip: {
     paddingHorizontal: 10,
     paddingVertical: 3,
@@ -1121,6 +1521,12 @@ const modalStyles = StyleSheet.create({
   beddhaText: {
     fontSize: 14,
     fontFamily: 'Poppins_700Bold',
+  },
+  assignmentCount: {
+    fontSize: 12,
+    fontFamily: 'Poppins_500Medium',
+    color: C.textMuted,
+    marginTop: 4,
   },
 });
 

@@ -26,6 +26,14 @@ function istDate(offsetDays = 0): string {
   return `${y}-${m}-${day}`;
 }
 
+// Map offset_days to the event key and config field
+const STAGE_MAP: Record<number, { eventKey: string; configField: string }> = {
+  5: { eventKey: "seba_5day_reminder", configField: "five_day_reminder_enabled" },
+  3: { eventKey: "seba_3day_reminder", configField: "three_day_reminder_enabled" },
+  1: { eventKey: "seba_1day_reminder", configField: "one_day_reminder_enabled" },
+  0: { eventKey: "seba_dayof_reminder", configField: "morning_reminder_enabled" },
+};
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -38,17 +46,38 @@ Deno.serve(async (req: Request) => {
     );
 
     const url = new URL(req.url);
+
+    // Support both old mode-based and new offset_days-based API
+    let offsetDays: number | null = null;
     let mode = url.searchParams.get("mode") || "";
-    if (!mode && req.method === "POST") {
+
+    if (req.method === "POST") {
       try {
         const body = await req.json();
-        mode = String(body.mode || "");
+        if (body.offset_days !== undefined) {
+          offsetDays = parseInt(String(body.offset_days), 10);
+        } else if (body.mode) {
+          mode = String(body.mode);
+        }
       } catch { /* ignore */ }
     }
 
-    if (mode !== "evening" && mode !== "morning") {
-      return json({ error: "mode must be 'evening' or 'morning'" }, 400);
+    if (offsetDays === null) {
+      // Backward compat: map old mode to offset
+      if (mode === "evening") offsetDays = 1;
+      else if (mode === "morning") offsetDays = 0;
+      else {
+        return json({ error: "offset_days (0,1,3,5) or mode (evening/morning) required" }, 400);
+      }
     }
+
+    if (!(offsetDays in STAGE_MAP)) {
+      return json({ error: "offset_days must be one of: 5, 3, 1, 0" }, 400);
+    }
+
+    const stage = STAGE_MAP[offsetDays];
+    const targetDate = istDate(offsetDays);
+    const eventKey = stage.eventKey;
 
     const { data: config } = await supabase
       .from("seba_notification_config")
@@ -58,18 +87,10 @@ Deno.serve(async (req: Request) => {
 
     if (!config) return json({ error: "Config not initialized" }, 500);
 
-    const enabled = mode === "evening"
-      ? config.evening_reminder_enabled
-      : config.morning_reminder_enabled;
-
+    const enabled = (config as Record<string, unknown>)[stage.configField] as boolean;
     if (!enabled) {
-      return json({ success: true, skipped: true, reason: "reminder_disabled", mode });
+      return json({ success: true, skipped: true, reason: "reminder_disabled", offset_days: offsetDays });
     }
-
-    // Evening run at 6 PM notifies people who have seba TOMORROW.
-    // Morning run at 6 AM notifies people who have seba TODAY.
-    const targetDate = mode === "evening" ? istDate(1) : istDate(0);
-    const eventKey = mode === "evening" ? "seba_evening_reminder" : "seba_morning_reminder";
 
     const { data: rosterRows, error: rosterErr } = await supabase
       .from("seba_roster")
@@ -127,7 +148,8 @@ Deno.serve(async (req: Request) => {
 
     return json({
       success: true,
-      mode,
+      offset_days: offsetDays,
+      event_key: eventKey,
       service_date: targetDate,
       matched: rows.length,
       notified,

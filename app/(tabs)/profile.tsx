@@ -332,10 +332,10 @@ export default function ProfileScreen() {
     if (!profile) setLoading(true);
     let data: any = null;
 
-    const res1 = await supabase.from('sebayats').select('*').eq('auth_user_id', user!.id).maybeSingle();
+    const res1 = await supabase.from('sebayats').select('*, registration_no').eq('auth_user_id', user!.id).maybeSingle();
     data = res1.data;
     if (!data) {
-      const res2 = await supabase.from('sebayats').select('*').eq('id', user!.id).maybeSingle();
+      const res2 = await supabase.from('sebayats').select('*, registration_no').eq('id', user!.id).maybeSingle();
       data = res2.data;
     }
 
@@ -416,6 +416,27 @@ export default function ProfileScreen() {
   function OfflineSettingsSection({ syncedAt, onSyncNow }: { syncedAt: number | null; onSyncNow: () => Promise<void> }) {
     const { isOnline, offlineEnabled, setOfflineEnabled, clearCache } = useOffline();
     const [syncing, setSyncing] = useState(false);
+    const [reminderEnabled, setReminderEnabled] = useState(true);
+    const [reminderCount, setReminderCount] = useState(0);
+    const { t, language } = useLanguage();
+    const isOdia = language === 'or';
+    const odiaFont = isOdia ? { fontFamily: 'NotoSansOriya_400Regular' as const } : {};
+
+    useEffect(() => {
+      (async () => {
+        const { isOfflineRemindersEnabled, getScheduledReminderCount } = await import('@/lib/offlineReminders');
+        setReminderEnabled(await isOfflineRemindersEnabled());
+        setReminderCount(await getScheduledReminderCount());
+      })();
+    }, []);
+
+    async function toggleReminders(v: boolean) {
+      setReminderEnabled(v);
+      const { setOfflineRemindersEnabled } = await import('@/lib/offlineReminders');
+      await setOfflineRemindersEnabled(v);
+      if (!v) setReminderCount(0);
+    }
+
     return (
       <SectionCard title={t('offlineSection.title')} icon={CloudOff}>
         <View style={styles.infoRow}>
@@ -434,6 +455,28 @@ export default function ProfileScreen() {
         </View>
         <InfoRow label={t('offlineSection.lastSynced')} value={syncedAt ? formatRelative(syncedAt) : t('offlineSection.never')} />
         <InfoRow label={t('offlineSection.network')} value={isOnline ? t('offlineSection.online') : t('offlineSection.offline')} />
+
+        {/* Offline Beddha Reminders */}
+        <View style={[styles.infoRow, { marginTop: 8 }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.infoLabel, odiaFont]}>{t('notifications.offlineReminders')}</Text>
+            <Text style={{ fontSize: 11, fontFamily: 'Poppins_400Regular', color: C.textMuted, marginTop: 2 }}>
+              {t('notifications.reminderStages')}
+            </Text>
+            {reminderEnabled && reminderCount > 0 && (
+              <Text style={{ fontSize: 10, fontFamily: 'Poppins_400Regular', color: C.saffron, marginTop: 4 }}>
+                {reminderCount} reminders scheduled
+              </Text>
+            )}
+          </View>
+          <Switch
+            value={reminderEnabled}
+            onValueChange={toggleReminders}
+            trackColor={{ false: C.border, true: C.saffron + '60' }}
+            thumbColor={reminderEnabled ? C.saffron : '#f4f3f4'}
+          />
+        </View>
+
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
           <TouchableOpacity
             style={[
@@ -565,12 +608,10 @@ export default function ProfileScreen() {
                   <Text style={styles.headerPhone}>{phone}</Text>
                 </View>
               ) : null}
-              {profile?.registration_no ? (
-                <View style={styles.headerPhoneRow}>
+              <View style={styles.headerPhoneRow}>
                   <Hash color="rgba(255,255,255,0.75)" size={12} />
-                  <Text style={styles.headerPhone}>{t('profile.reg')} {profile.registration_no}</Text>
-                </View>
-              ) : null}
+                <Text style={styles.headerPhone}>{t('profile.reg')} {profile?.registration_no || 'Not assigned'}</Text>
+              </View>
             </View>
           </View>
         </LinearGradient>
@@ -589,6 +630,14 @@ export default function ProfileScreen() {
               <Text style={[styles.statusDateText, { color: cfg.color }]}>
                 {t('profile.approvedOn') + ' '}
                 {new Date(profile.reviewed_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+              </Text>
+            </View>
+          ) : null}
+          {status === 'approved' ? (
+            <View style={styles.statusDateRow}>
+              <Hash color={cfg.color} size={13} />
+              <Text style={[styles.statusDateText, { color: cfg.color }]}>
+                Registration No. {profile.registration_no || 'Not assigned'}
               </Text>
             </View>
           ) : null}
@@ -614,6 +663,7 @@ export default function ProfileScreen() {
         {profile && (
           <SectionCard title={t('profile.personalDetails')} icon={User}>
             <InfoRow label={t('profile.fullName')} value={displayName} />
+            <InfoRow label="Registration No." value={profile.registration_no || 'Not assigned'} />
             {profile.alias_name ? <InfoRow label={t('profile.knownAs')} value={profile.alias_name} /> : null}
             <InfoRow label={t('profile.dateOfBirth')} value={formatDate(profile.date_of_birth)} />
             <InfoRow label={t('profile.gender')} value={profile.gender} />

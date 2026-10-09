@@ -14,6 +14,7 @@ interface AuthState {
   loading: boolean;
   profileStatus: ProfileStatus;
   profileStatusLoading: boolean;
+  suspended: boolean;
 }
 
 interface AuthContextType extends AuthState {
@@ -22,6 +23,7 @@ interface AuthContextType extends AuthState {
   resendOtp: (phone: string, channel?: 'sms' | 'voice') => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
   refreshProfileStatus: () => Promise<void>;
+  clearSuspended: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -33,20 +35,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loading: true,
     profileStatus: 'none',
     profileStatusLoading: false,
+    suspended: false,
   });
 
   async function fetchProfileStatus(userId: string) {
     setState((prev) => ({ ...prev, profileStatusLoading: true }));
     const { data } = await supabase
       .from('sebayats')
-      .select('profile_status')
+      .select('profile_status, is_suspended')
       .eq('auth_user_id', userId)
       .maybeSingle();
+    const isSuspended = data?.is_suspended === true;
     setState((prev) => ({
       ...prev,
       profileStatus: (data?.profile_status as ProfileStatus) ?? 'none',
       profileStatusLoading: false,
+      suspended: isSuspended,
     }));
+    if (isSuspended) {
+      await supabase.auth.signOut();
+      setState({ user: null, session: null, loading: false, profileStatus: 'none', profileStatusLoading: false, suspended: true });
+    }
   }
 
   async function refreshProfileStatus() {
@@ -102,6 +111,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ phone, otp }),
       });
       const data = await response.json();
+      if (data.suspended) {
+        setState((prev) => ({ ...prev, suspended: true }));
+        return { success: false, error: data.error || 'Your profile has been suspended.' };
+      }
       if (!response.ok) {
         return { success: false, error: data.error || 'Verification failed' };
       }
@@ -158,11 +171,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function signOut() {
     await supabase.auth.signOut();
-    setState({ user: null, session: null, loading: false });
+    setState({ user: null, session: null, loading: false, profileStatus: 'none', profileStatusLoading: false, suspended: false });
+  }
+
+  function clearSuspended() {
+    setState((prev) => ({ ...prev, suspended: false }));
   }
 
   return (
-    <AuthContext.Provider value={{ ...state, sendOtp, verifyOtp, resendOtp, signOut, refreshProfileStatus }}>
+    <AuthContext.Provider value={{ ...state, sendOtp, verifyOtp, resendOtp, signOut, refreshProfileStatus, clearSuspended }}>
       {children}
     </AuthContext.Provider>
   );
@@ -174,11 +191,13 @@ const noopAuth: AuthContextType = {
   loading: true,
   profileStatus: 'none',
   profileStatusLoading: false,
+  suspended: false,
   sendOtp: async () => ({ success: false, error: 'Auth not ready' }),
   verifyOtp: async () => ({ success: false, error: 'Auth not ready' }),
   resendOtp: async () => ({ success: false, error: 'Auth not ready' }),
   signOut: async () => {},
   refreshProfileStatus: async () => {},
+  clearSuspended: () => {},
 };
 
 export function useAuth() {

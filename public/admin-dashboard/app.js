@@ -105,14 +105,18 @@ const state = {
   sebaHistoryCalMonth: new Date().getMonth(),
   sebaHistoryShowCal: false,
   sebaSelectionsByCat: {},  // { [sebayat_id]: { [seba_category_id]: [beddha_number] } }
+  sebaNamesBySebayat: {},   // { [sebayat_id]: 'Cat1, Cat2' }
   // Notices
   notices: [],
   noticesLoading: false,
   noticesLoaded: false,
   noticesFilter: 'all',     // 'all' | 'published' | 'draft'
+  noticesCategoryFilter: 'all', // 'all' | category key
+  noticesSearch: '',
   noticesForm: null,        // null = list, object = editing/creating
   noticesFormError: '',
   noticesFormSaving: false,
+  noticesFormImageUploading: null,
   noticesDeleteTarget: null,
   noticesSebayatSearch: '',
   noticesSebayatResults: [],
@@ -125,6 +129,13 @@ const state = {
   appTypesLoaded: false,
   appTypeFormError: '',
   appTypeFormSaving: false,
+  // Sahi Management
+  sahiList: [],
+  sahiLoading: false,
+  sahiLoaded: false,
+  sahiFormSaving: false,
+  sahiFormError: '',
+  sahiToggleTarget: null,
   // Manage Applications
   manageApps: [],
   manageAppsLoading: false,
@@ -144,6 +155,9 @@ const state = {
   eventImages: [],
   eventImagesLoading: false,
   eventImagesLoaded: false,
+  documents: [],
+  documentsLoading: false,
+  documentsLoaded: false,
   committeeDetail: null,        // committee being viewed/edited
   committeeSebayats: [],
   // Roles management
@@ -179,6 +193,11 @@ const state = {
 const $ = (sel, ctx = document) => ctx.querySelector(sel);
 const $$ = (sel, ctx = document) => Array.from(ctx.querySelectorAll(sel));
 const esc = s => s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const NOTICE_REPEAT_DAYS = [
+  { value: '1', label: 'Mon' }, { value: '2', label: 'Tue' }, { value: '3', label: 'Wed' },
+  { value: '4', label: 'Thu' }, { value: '5', label: 'Fri' }, { value: '6', label: 'Sat' },
+  { value: '0', label: 'Sun' },
+];
 
 // ── Permission helper ────────────────────────────────────────────────────────
 function can(resource, action) {
@@ -407,7 +426,7 @@ function showApp(user) {
 // ============================================================
 async function loadAll() {
   setLoading(true);
-  const [seb, hist, adm, cats, beddhas, roles, appSettings] = await Promise.all([
+  const [seb, hist, adm, cats, beddhas, roles, appSettings, sahis] = await Promise.all([
     db.from('sebayats').select('*').order('submitted_at', { ascending: false, nullsLast: true }).order('created_at', { ascending: false }),
     db.from('profile_review_history').select('*').order('created_at', { ascending: false }).limit(200),
     db.from('admin_users_view').select('*').order('created_at', { ascending: true }),
@@ -415,6 +434,7 @@ async function loadAll() {
     db.from('seba_beddhas').select('seba_category_id,beddha_number,beddha_type'),
     db.from('admin_roles').select('*').order('created_at', { ascending: true }),
     db.from('app_settings').select('key,value').in('key', ['otp_sms_enabled', 'otp_whatsapp_enabled']),
+    db.from('sahis').select('name').eq('is_active', true).order('sort_order').order('name'),
   ]);
   setLoading(false);
   if (seb.error) { showToast('Failed to load sebayats', 'error'); return; }
@@ -431,8 +451,27 @@ async function loadAll() {
   }
   state.adminOverrideCounts = countMap;
   state.sebaCategories = cats.data || [];
+  SAHI_LIST = (sahis.data || []).map(s => s.name);
   state.sebaBeddhas = buildBeddhaMap(beddhas.data || []);
   state.roles = roles.data || [];
+
+  // Load seba selections to populate the Seba column in the All Sebayats table
+  const { data: allSelections } = await db
+    .from('sebayat_seba_selections')
+    .select('sebayat_id, seba_category_id');
+  const catNameMap = {};
+  for (const c of (cats.data || [])) catNameMap[c.id] = c.name;
+  const namesBySebayat = {};
+  for (const sel of (allSelections || [])) {
+    const catName = catNameMap[sel.seba_category_id];
+    if (!catName) continue;
+    if (!namesBySebayat[sel.sebayat_id]) namesBySebayat[sel.sebayat_id] = new Set();
+    namesBySebayat[sel.sebayat_id].add(catName);
+  }
+  state.sebaNamesBySebayat = {};
+  for (const [sid, names] of Object.entries(namesBySebayat)) {
+    state.sebaNamesBySebayat[sid] = [...names].sort().join(', ');
+  }
   const settingsMap = {};
   for (const row of (appSettings.data || [])) settingsMap[row.key] = row.value;
   state.otpSettings = {
@@ -569,7 +608,7 @@ function filteredSebayats() {
       if (s.profile_status !== 'draft' && s.profile_status !== 'changes_requested') return false;
     } else if (state.filter !== 'all' && s.profile_status !== state.filter) return false;
     if (!q) return true;
-    return ['full_name','first_name','last_name','phone','email','bansa_name','seba_name','registration_no','palia_number']
+    return ['full_name','first_name','middle_name','last_name','phone','aadhaar_number','health_card_no','permanent_sahi','current_sahi','alias_name']
       .some(k => (s[k] || '').toString().toLowerCase().includes(q));
   });
 }
@@ -643,7 +682,7 @@ function render() {
     }
   }
   // Parent Management toggle: highlight when a child is active
-  const mgmtViews = ['notices', 'notices_form', 'committees', 'event_images'];
+  const mgmtViews = ['notices', 'notices_form', 'committees', 'event_images', 'documents', 'sahi_management'];
   const mgmtActive = mgmtViews.includes(state.view);
   const mgmtToggle = document.getElementById('nav-mgmt-toggle');
   if (mgmtToggle) mgmtToggle.classList.toggle('active', mgmtActive);
@@ -679,7 +718,7 @@ function render() {
   else if (state.view === 'roles') crumb = `<span>Settings</span><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Roles &amp; Permissions</span>`;
   else if (state.view === 'add_profile') crumb = `<span>Management</span><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Add Profile</span>`;
   else if (state.view === 'seba_categories') crumb = `<span>Management</span><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Seba Categories</span>`;
-  else if (state.view === 'seba_assign') crumb = `<span>Management</span><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Seba Assign</span>`;
+  else if (state.view === 'seba_assign') crumb = `<span>Management</span><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Nijog Assign Bedha</span>`;
   else if (state.view === 'seba_calendar') crumb = `<span>Management</span><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Seba Calendar</span>`;
   else if (state.view === 'nijog_view') crumb = `<span>Management</span><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Nijog Assignments</span>`;
   else if (state.view === 'manage_profiles') crumb = `<span>Management</span><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Manage Profiles</span>`;
@@ -689,6 +728,8 @@ function render() {
   else if (state.view === 'notices_form') crumb = `<span>Management</span><span class="breadcrumb-sep">/</span><button class="breadcrumb-link" onclick="state.noticesForm=null;state.view='notices';render()">Notices</button><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">${state.noticesForm?.id ? 'Edit Notice' : 'New Notice'}</span>`;
   else if (state.view === 'committees') crumb = `<span>Management</span><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Committee</span>`;
   else if (state.view === 'event_images') crumb = `<span>Management</span><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Event Images</span>`;
+  else if (state.view === 'documents') crumb = `<span>Management</span><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Documents</span>`;
+  else if (state.view === 'sahi_management') crumb = `<span>Management</span><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Sahi Management</span>`;
   else if (state.view === 'seba_today') crumb = `<span>Seba</span><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Today's Seba</span>`;
   else if (state.view === 'seba_history') crumb = `<span>Management</span><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">Seba History</span>`;
   else if (state.view === 'seba_history_member') crumb = `<span>Management</span><span class="breadcrumb-sep">/</span><button class="breadcrumb-link" onclick="state.view='seba_history';render()">Seba History</button><span class="breadcrumb-sep">/</span><span class="breadcrumb-current">${state.sebaHistoryMember ? esc(state.sebaHistoryMember.full_name || '') : ''}</span>`;
@@ -722,6 +763,8 @@ function render() {
   else if (state.view === 'notices_form') { c.innerHTML = renderNoticesFormPage(); attachNoticesFormHandlers(); return; }
   else if (state.view === 'committees') { c.innerHTML = renderCommitteesView(); attachCommitteesHandlers(); return; }
   else if (state.view === 'event_images') { renderEventImagesView(c); return; }
+  else if (state.view === 'documents') { renderDocumentsView(c); return; }
+  else if (state.view === 'sahi_management') { c.innerHTML = renderSahiManagementView(); attachSahiManagementHandlers(); return; }
   else if (state.view === 'seba_today') { renderSebaTodayView(c); return; }
   else if (state.view === 'seba_history') { renderSebaHistoryView(c); return; }
   else if (state.view === 'seba_history_member') { renderSebaHistoryMemberView(c); return; }
@@ -902,10 +945,10 @@ function renderOverview() {
       ${statCard('amber', 'Changes Req.', counts.changes, 'Awaiting resubmission', iconAlert(), 'changes_requested')}
     </div>
 
-    <div style="margin-top:8px;display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start">
+    <div class="dashboard-overview-grid">
 
       <!-- Left: Today's Seba -->
-      <div class="panel" style="padding:0;overflow:hidden">
+      <div class="panel dashboard-today-panel" style="padding:0;overflow:hidden">
         <div class="panel-header" style="padding:16px 20px 12px">
           <div>
             <div class="panel-title">Today's Seba</div>
@@ -928,7 +971,7 @@ function renderOverview() {
       </div>
 
       <!-- Right: Needs attention -->
-      <div class="panel">
+      <div class="panel dashboard-attention-panel">
         <div class="panel-header">
           <div>
             <div class="panel-title">Needs attention</div>
@@ -944,7 +987,7 @@ function renderOverview() {
               </div>
               <div class="activity-content">
                 <div class="activity-line1"><strong>${esc(getName(seb))}</strong></div>
-                <div class="activity-line2">${seb.seba_name ? esc(seb.seba_name) + ' · ' : ''}${seb.bansa_name ? esc(seb.bansa_name) : '—'}</div>
+                <div class="activity-line2">${(seb.seba_name || state.sebaNamesBySebayat[seb.id]) ? esc(seb.seba_name || state.sebaNamesBySebayat[seb.id]) + ' · ' : ''}${seb.bansa_name ? esc(seb.bansa_name) : '—'}</div>
               </div>
               <div class="activity-time">${fmtRelative(seb.submitted_at || seb.created_at)}</div>
             </div>
@@ -1039,7 +1082,7 @@ function renderApplications() {
         <p>Review and process sebayat applications</p>
       </div>
       <div class="page-actions">
-        <button class="btn btn-ghost btn-sm" onclick="actions.exportCsv()">
+        <button class="btn btn-ghost btn-sm" onclick="actions.openExportModal()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Export CSV
         </button>
@@ -1053,7 +1096,7 @@ function renderApplications() {
     <div class="toolbar">
       <div class="search-box">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input id="search-input" type="text" placeholder="Search name, phone, email, bansa, seba, reg. no…" value="${esc(state.search)}" />
+        <input id="search-input" type="text" placeholder="Search name, phone, Aadhaar, health no., Sahi, alias…" value="${esc(state.search)}" />
         <kbd>/</kbd>
       </div>
       <div class="filter-tabs">
@@ -1083,9 +1126,9 @@ function renderApplications() {
               <th style="width:32px"><input type="checkbox" class="cb" id="select-all" ${pageItems.length > 0 && pageItems.every(s => state.selectedIds.has(s.id)) ? 'checked' : ''} /></th>
               <th class="${sortClass('name')}" data-sort="name">Applicant ${sortArrow('name')}</th>
               <th>Contact</th>
-              <th>Seba</th>
               <th class="${sortClass('joining_year')}" data-sort="joining_year">Joining ${sortArrow('joining_year')}</th>
               <th>Status</th>
+              <th>Reg. No.</th>
               <th class="${sortClass('submitted_at')}" data-sort="submitted_at">Submitted ${sortArrow('submitted_at')}</th>
               <th>Actions</th>
             </tr>
@@ -1113,7 +1156,9 @@ function renderApplications() {
 function renderRow(s) {
   const status = s.profile_status || 'draft';
   const canAct = ['submitted','resubmitted'].includes(status);
-  const joining = s.joining_year || (s.joining_date ? s.joining_date.slice(0,4) : '—');
+  const joining = s.joining_date_exact && s.joining_date
+    ? fmtDate(s.joining_date)
+    : (s.joining_year || (s.joining_date ? (s.joining_date.match(/\/(\d{4})$/)?.[1] || s.joining_date.slice(0,4)) : null) || '—');
   const checked = state.selectedIds.has(s.id);
   return `<tr ${checked ? 'class="row-selected"' : ''} data-id="${esc(s.id)}">
     <td><input type="checkbox" class="cb row-cb" data-id="${esc(s.id)}" ${checked ? 'checked' : ''} /></td>
@@ -1132,14 +1177,9 @@ function renderRow(s) {
         ${s.email ? `<div class="cell-stack-sub">${esc(s.email)}</div>` : ''}
       </div>
     </td>
-    <td>
-      <div class="cell-stack">
-        <div class="cell-stack-main">${esc(s.seba_name || '—')}</div>
-        ${s.bansa_name ? `<div class="cell-stack-sub">${esc(s.bansa_name)}${s.palia_number ? ' · Palia ' + esc(s.palia_number) : ''}</div>` : ''}
-      </div>
-    </td>
     <td>${esc(joining)}</td>
-    <td><span class="status-badge status-${esc(status)}">${esc(STATUS_LABELS[status] || status)}</span></td>
+    <td><span class="status-badge status-${esc(status)}">${esc(STATUS_LABELS[status] || status)}</span>${s.is_deceased ? ' <span class="status-badge status-deceased">Deceased</span>' : s.is_suspended ? ' <span class="status-badge" style="background:#FEE2E2;color:#DC2626;border:1px solid #FECACA;margin-left:4px">Suspended</span>' : ''}</td>
+    <td>${status === 'approved' && s.registration_no ? `<span style="font-weight:600;color:var(--ink1);font-family:monospace;font-size:12px">${esc(s.registration_no)}</span>` : '<span style="color:var(--ink4)">—</span>'}</td>
     <td>${s.submitted_at ? fmtDate(s.submitted_at) : '—'}</td>
     <td>
       <div class="row-actions">
@@ -1195,6 +1235,10 @@ const ACTION_TYPE_CONFIG = {
   mark_done:       { label: 'Completed',       color: '#065F46', bg: '#ECFDF5' },
   mark_absent:     { label: 'Marked Absent',   color: '#92400E', bg: '#FFF3E8' },
   notice_published:{ label: 'Published',       color: '#065F46', bg: '#ECFDF5' },
+  suspend:         { label: 'Suspended',        color: '#991B1B', bg: '#FEF2F2' },
+  activate:        { label: 'Activated',        color: '#065F46', bg: '#ECFDF5' },
+  mark_deceased:   { label: 'Marked Deceased',  color: '#4C1D2E', bg: '#FDF2F8' },
+  reassign_nijog:  { label: 'Nijog Reassigned', color: '#1D4ED8', bg: '#EFF6FF' },
 };
 
 function getActionBadge(actionType) {
@@ -1372,7 +1416,14 @@ const ACTIVITY_FIELD_LABELS = {
   last_name: 'Last Name',
   full_name: 'Full Name',
   is_disabled: 'Account Disabled',
-  is_super_admin: 'Super Admin',
+  is_suspended: 'Suspended',
+  is_deceased: 'Deceased',
+  date_of_death: 'Date of Death',
+  place_of_death: 'Place of Death',
+  cause_of_death: 'Cause of Death',
+  death_notes: 'Death Notes',
+  deactivated_at: 'Deactivated At',
+  reassigned_to: 'Reassigned To',
   action: 'Action',
   resource: 'Resource',
   permission: 'Permission',
@@ -1444,7 +1495,7 @@ const PERMISSION_SECTIONS = [
       { key: 'seba_today', label: 'Seba Today' },
       { key: 'seba_calendar', label: 'Seba Calendar' },
       { key: 'seba_history', label: 'Seba History' },
-      { key: 'seba_assign', label: 'Seba Assignments' },
+      { key: 'seba_assign', label: 'Nijog Assign Bedha' },
       { key: 'seba_categories', label: 'Seba Categories' },
       { key: 'nijog', label: 'Nijog' },
     ],
@@ -1685,7 +1736,7 @@ const ROLE_RESOURCES = [
   { id: 'seba_today', label: "Today's Seba" },
   { id: 'seba_calendar', label: 'Seba Calendar' },
   { id: 'seba_history', label: 'Seba History' },
-  { id: 'seba_assign', label: 'Seba Assign' },
+  { id: 'seba_assign', label: 'Nijog Assign Bedha' },
   { id: 'seba_categories', label: 'Seba Categories' },
   { id: 'nijog', label: 'Nijog Assignments' },
   { id: 'notices', label: 'Notices' },
@@ -1992,24 +2043,493 @@ const actions = {
     openActionModal();
   },
 
+  async toggleSuspend(id, suspend) {
+    const s = state.sebayats.find(x => x.id === id);
+    if (!s) return;
+    const verb = suspend ? 'Suspend' : 'Activate';
+    const label = suspend ? 'Suspend (Basanda)' : 'Activate';
+    showConfirm({
+      title: `${verb} Sebayat`,
+      message: suspend
+        ? `Suspend ${esc(getName(s))}? This profile will be hidden from the member directory until reactivated.`
+        : `Reactivate ${esc(getName(s))}? This profile will be visible again in the member directory.`,
+      confirmLabel: label,
+      danger: suspend,
+      onConfirm: async () => {
+        setLoading(true);
+        const { error } = await db.from('sebayats').update({ is_suspended: suspend }).eq('id', id);
+        setLoading(false);
+        if (error) { showToast('Failed to ' + verb.toLowerCase() + ': ' + error.message, 'error'); return; }
+        logActivity(suspend ? 'suspend' : 'activate', 'sebayat_profiles', id,
+          getName(s),
+          { is_suspended: !suspend },
+          { is_suspended: suspend }
+        );
+        showToast(`${getName(s)} ${suspend ? 'suspended' : 'activated'}`, 'success');
+        await loadAll();
+        if (state.currentSebayat) {
+          const updated = state.sebayats.find(x => x.id === state.currentSebayat.id);
+          if (updated) state.currentSebayat = updated;
+        }
+        await renderDrawer();
+        render();
+      },
+    });
+  },
+
+  async markDeceased(id) {
+    const s = state.sebayats.find(x => x.id === id);
+    if (!s) return;
+    const d = mpState.editData;
+    if (!d.date_of_death) { showToast('Please enter a date of death', 'warning'); return; }
+    showConfirm({
+      title: 'Mark as Deceased',
+      message: `Mark ${esc(getName(s))} as deceased? This will permanently deactivate the profile and hide it from the member directory. You can reassign their Nijog responsibilities next.`,
+      confirmLabel: 'Mark Deceased & Deactivate',
+      danger: true,
+      onConfirm: async () => {
+        setLoading(true);
+        const updates = {
+          is_deceased: true,
+          is_suspended: true,
+          date_of_death: d.date_of_death || null,
+          place_of_death: d.place_of_death || null,
+          cause_of_death: d.cause_of_death || null,
+          death_notes: d.death_notes || null,
+          deactivated_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        const { error } = await db.from('sebayats').update(updates).eq('id', id);
+        setLoading(false);
+        if (error) { showToast('Failed to mark deceased: ' + error.message, 'error'); return; }
+        logActivity('mark_deceased', 'sebayat_profiles', id, getName(s),
+          { is_deceased: false, is_suspended: s.is_suspended },
+          { is_deceased: true, is_suspended: true, date_of_death: d.date_of_death }
+        );
+        showToast(`${getName(s)} marked as deceased. Profile deactivated.`, 'success');
+        await loadAll();
+        const updated = state.sebayats.find(x => x.id === id);
+        if (updated) { mpState.editData = JSON.parse(JSON.stringify(updated)); mpState.dirty = false; }
+        mpState.editTab = 'death';
+        mpRerender();
+        actions.openReassignModal(id);
+      },
+    });
+  },
+
+  async updateDeathDetails(id) {
+    const s = state.sebayats.find(x => x.id === id);
+    if (!s) return;
+    const d = mpState.editData;
+    setLoading(true);
+    const updates = {
+      date_of_death: d.date_of_death || null,
+      place_of_death: d.place_of_death || null,
+      cause_of_death: d.cause_of_death || null,
+      death_notes: d.death_notes || null,
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await db.from('sebayats').update(updates).eq('id', id);
+    setLoading(false);
+    if (error) { showToast('Failed to update death details: ' + error.message, 'error'); return; }
+    const idx = state.sebayats.findIndex(x => x.id === id);
+    if (idx !== -1) state.sebayats[idx] = { ...state.sebayats[idx], ...updates };
+    mpState.dirty = false;
+    showToast('Death details updated', 'success');
+    mpRerender();
+  },
+
+  openReassignModal(id) {
+    const s = state.sebayats.find(x => x.id === id);
+    if (!s) return;
+    const currentYear = new Date().getFullYear();
+    mpState.deathSaving = false;
+    mpState.deathReassignMap = {};
+
+    const html = `
+      <div class="modal-header">
+        <div class="modal-title">Reassign Nijog Responsibilities</div>
+        <div class="modal-desc">Select a replacement sebayat for each of <strong>${esc(getName(s))}</strong>'s Nijog assignments for ${currentYear}. You can skip assignments and reassign them later from the Nijog Assign view.</div>
+      </div>
+      <div class="modal-body" id="reassign-body" style="display:flex;flex-direction:column;gap:14px">
+        <div style="text-align:center;padding:20px;color:var(--ink3)">Loading assignments…</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="reassign-skip">Skip for Now</button>
+        <button class="btn btn-primary" id="reassign-submit" disabled>Reassign Selected</button>
+      </div>
+    `;
+    showModal(html);
+
+    $('#reassign-skip').onclick = () => closeModal();
+
+    (async () => {
+      const { data: assignments } = await db.from('nijog_assignments')
+        .select('id,seba_category_id,beddha_number,seba_categories!inner(name)')
+        .eq('sebayat_id', id)
+        .eq('year', currentYear)
+        .order('beddha_number');
+
+      mpState.deathNijogAssignments = assignments || [];
+      const body = $('#reassign-body');
+      if (!body) return;
+
+      if (!assignments || assignments.length === 0) {
+        body.innerHTML = '<div style="text-align:center;padding:24px;color:var(--ink3);font-size:14px">This sebayat has no Nijog assignments for ' + currentYear + '. Nothing to reassign.</div>';
+        $('#reassign-submit').style.display = 'none';
+        return;
+      }
+
+      body.innerHTML = assignments.map(a => `
+        <div class="reassign-row" data-reassign-id="${esc(a.id)}">
+          <div class="reassign-info">
+            <div class="reassign-seba">${esc(a.seba_categories.name)}</div>
+            <div class="reassign-beddha">Beddha ${esc(String(a.beddha_number))}</div>
+          </div>
+          <div class="reassign-search-wrap">
+            <input type="text" class="reassign-search" data-reassign-id="${esc(a.id)}" placeholder="Search sebayat by name or phone…" autocomplete="off" />
+            <div class="reassign-dropdown" id="reassign-dropdown-${esc(a.id)}" style="display:none"></div>
+            <div class="reassign-selected" id="reassign-selected-${esc(a.id)}" style="display:none"></div>
+          </div>
+        </div>`).join('');
+
+      $('.reassign-search').forEach(inp => {
+        const aId = inp.dataset.reassignId;
+        inp.oninput = async () => {
+          const q = inp.value.trim().toLowerCase();
+          const dd = $(`#reassign-dropdown-${aId}`);
+          if (q.length < 2) { if (dd) dd.style.display = 'none'; return; }
+          const matches = state.sebayats.filter(x =>
+            x.id !== id && !x.is_deceased && !x.is_suspended &&
+            x.profile_status === 'approved' &&
+            (getName(x).toLowerCase().includes(q) || (x.phone || '').includes(q))
+          ).slice(0, 10);
+          if (!dd) return;
+          if (matches.length === 0) {
+            dd.innerHTML = '<div class="reassign-no-result">No matches</div>';
+          } else {
+            dd.innerHTML = matches.map(x => `
+              <div class="reassign-result" data-reassign-id="${esc(aId)}" data-sebayat-id="${esc(x.id)}" data-sebayat-name="${esc(getName(x))}">
+                <div class="reassign-result-name">${esc(getName(x))}</div>
+                <div class="reassign-result-sub">${x.phone ? '+' + esc(x.phone) : ''}${x.bansa_name ? ' · ' + esc(x.bansa_name) : ''}</div>
+              </div>`).join('');
+          }
+          dd.style.display = 'block';
+        };
+        inp.onfocus = () => { const dd = $(`#reassign-dropdown-${aId}`); if (dd && dd.children.length > 0) dd.style.display = 'block'; };
+        inp.onblur = () => { setTimeout(() => { const dd = $(`#reassign-dropdown-${aId}`); if (dd) dd.style.display = 'none'; }, 200); };
+      });
+
+      $('.reassign-result').forEach(el => {
+        el.onclick = () => {
+          const aId = el.dataset.reassignId;
+          const sebId = el.dataset.sebayatId;
+          const sebName = el.dataset.sebayatName;
+          mpState.deathReassignMap[aId] = sebId;
+          const inp = $(`.reassign-search[data-reassign-id="${aId}"]`);
+          const dd = $(`#reassign-dropdown-${aId}`);
+          const sel = $(`#reassign-selected-${aId}`);
+          if (inp) inp.style.display = 'none';
+          if (dd) dd.style.display = 'none';
+          if (sel) {
+            sel.style.display = 'flex';
+            sel.innerHTML = `
+              <div class="reassign-selected-name">${esc(sebName)}</div>
+              <button class="btn btn-ghost btn-xs reassign-clear" data-reassign-id="${esc(aId)}">Change</button>
+            `;
+            const clearBtn = sel.querySelector('.reassign-clear');
+            if (clearBtn) clearBtn.onclick = () => {
+              delete mpState.deathReassignMap[aId];
+              if (inp) { inp.style.display = ''; inp.value = ''; }
+              if (sel) sel.style.display = 'none';
+              updateSubmitState();
+            };
+          }
+          updateSubmitState();
+        };
+      });
+
+      function updateSubmitState() {
+        const count = Object.keys(mpState.deathReassignMap).length;
+        const total = mpState.deathNijogAssignments.length;
+        const btn = $('#reassign-submit');
+        if (btn) {
+          btn.disabled = count === 0;
+          btn.textContent = count > 0 ? `Reassign ${count} of ${total}` : 'Reassign Selected';
+        }
+      }
+
+      $('#reassign-submit').onclick = async () => {
+        const map = mpState.deathReassignMap;
+        const entries = Object.entries(map);
+        if (entries.length === 0) return;
+        const btn = $('#reassign-submit');
+        btn.disabled = true;
+        btn.textContent = 'Reassigning…';
+        mpState.deathSaving = true;
+
+        let firstReassignId = null;
+        let successCount = 0;
+        for (const [assignmentId, newSebayatId] of entries) {
+          const a = mpState.deathNijogAssignments.find(x => x.id === assignmentId);
+          if (!a) continue;
+          const { error: delErr } = await db.from('nijog_assignments').delete().eq('id', assignmentId);
+          if (delErr) { showToast('Failed to reassign ' + a.seba_categories.name + ' beddha ' + a.beddha_number, 'error'); continue; }
+          const { error: insErr } = await db.from('nijog_assignments').insert({
+            sebayat_id: newSebayatId,
+            seba_category_id: a.seba_category_id,
+            beddha_number: a.beddha_number,
+            year: currentYear,
+            assigned_by: state.user?.id || null,
+          });
+          if (insErr) {
+            if (insErr.code === '23505') {
+              const { error: insErr2 } = await db.from('nijog_assignments').upsert({
+                sebayat_id: newSebayatId,
+                seba_category_id: a.seba_category_id,
+                beddha_number: a.beddha_number,
+                year: currentYear,
+                assigned_by: state.user?.id || null,
+              }, { onConflict: 'sebayat_id,seba_category_id,beddha_number,year' });
+              if (insErr2) { showToast('Reassign failed for ' + a.seba_categories.name + ' #' + a.beddha_number, 'error'); continue; }
+            } else {
+              showToast('Reassign failed for ' + a.seba_categories.name + ' #' + a.beddha_number, 'error'); continue;
+            }
+          }
+          if (!firstReassignId) firstReassignId = newSebayatId;
+          successCount++;
+        }
+
+        if (firstReassignId) {
+          await db.from('sebayats').update({ reassigned_to: firstReassignId }).eq('id', id);
+        }
+
+        const replacementSeb = state.sebayats.find(x => x.id === firstReassignId);
+        logActivity('reassign_nijog', 'sebayat_profiles', id, `${getName(s)} → ${replacementSeb ? getName(replacementSeb) : 'multiple'}`,
+          { reassigned_to: s.reassigned_to },
+          { reassigned_to: firstReassignId, count: successCount }
+        );
+
+        mpState.deathSaving = false;
+        showToast(`Reassigned ${successCount} Nijog assignment${successCount !== 1 ? 's' : ''}`, 'success');
+        closeModal();
+        await loadAll();
+        const updated = state.sebayats.find(x => x.id === id);
+        if (updated) { mpState.editData = JSON.parse(JSON.stringify(updated)); mpState.dirty = false; }
+        mpRerender();
+      };
+    })();
+  },
+
+  openExportModal() {
+    const allCols = [
+      { key: 'full_name', label: 'Full Name', group: 'Personal' },
+      { key: 'first_name', label: 'First Name', group: 'Personal' },
+      { key: 'last_name', label: 'Last Name', group: 'Personal' },
+      { key: 'alias_name', label: 'Alias', group: 'Personal' },
+      { key: 'date_of_birth', label: 'Date of Birth', group: 'Personal' },
+      { key: 'gender', label: 'Gender', group: 'Personal' },
+      { key: 'blood_group', label: 'Blood Group', group: 'Personal' },
+      { key: 'marital_status', label: 'Marital Status', group: 'Personal' },
+      { key: 'spouse_name', label: 'Spouse Name', group: 'Personal' },
+      { key: 'father_name', label: 'Father Name', group: 'Family' },
+      { key: 'mother_name', label: 'Mother Name', group: 'Family' },
+      { key: 'phone', label: 'Phone', group: 'Contact' },
+      { key: 'whatsapp_number', label: 'WhatsApp', group: 'Contact' },
+      { key: 'email', label: 'Email', group: 'Contact' },
+      { key: 'bansa_name', label: 'Bansa', group: 'Seba' },
+      { key: 'palia_number', label: 'Palia Number', group: 'Seba' },
+      { key: 'seba_name', label: 'Seba Name', group: 'Seba' },
+      { key: 'joining_year', label: 'Joining Year', group: 'Seba' },
+      { key: 'is_bhai_pua', label: 'Bhai Pua', group: 'Seba' },
+      { key: 'is_baristha_bhai_pua', label: 'Baristha Bhai Pua', group: 'Seba' },
+      { key: 'is_bhagari', label: 'Bhagari', group: 'Seba' },
+      { key: 'is_palia', label: 'Palia', group: 'Seba' },
+      { key: 'registration_no', label: 'Reg. No.', group: 'Status' },
+      { key: 'profile_status', label: 'Profile Status', group: 'Status' },
+      { key: 'is_suspended', label: 'Suspended', group: 'Status' },
+      { key: 'is_deceased', label: 'Deceased', group: 'Status' },
+      { key: 'date_of_death', label: 'Date of Death', group: 'Status' },
+      { key: 'place_of_death', label: 'Place of Death', group: 'Status' },
+      { key: 'cause_of_death', label: 'Cause of Death', group: 'Status' },
+      { key: 'reassigned_to', label: 'Nijog Reassigned To', group: 'Status' },
+      { key: 'submitted_at', label: 'Submitted At', group: 'Status' },
+      { key: 'reviewed_at', label: 'Reviewed At', group: 'Status' },
+      { key: 'created_at', label: 'Created At', group: 'Status' },
+      { key: 'permanent_sahi', label: 'Sahi (Permanent)', group: 'Address' },
+      { key: 'permanent_landmark', label: 'Landmark (Permanent)', group: 'Address' },
+      { key: 'permanent_post_office', label: 'Post Office', group: 'Address' },
+      { key: 'permanent_police_station', label: 'Police Station', group: 'Address' },
+      { key: 'permanent_district', label: 'District', group: 'Address' },
+      { key: 'permanent_state', label: 'State', group: 'Address' },
+      { key: 'permanent_pincode', label: 'Pincode', group: 'Address' },
+      { key: 'health_card_no', label: 'Health Card No.', group: 'Other' },
+      { key: 'hobby', label: 'Hobby', group: 'Other' },
+      { key: 'occupation', label: 'Occupation', group: 'Other' },
+    ];
+    const defaultCols = ['full_name','phone','email','seba_name','bansa_name','palia_number','registration_no','profile_status','joining_year','submitted_at','reviewed_at'];
+    const groups = [...new Set(allCols.map(c => c.group))];
+    const statusOptions = [
+      { key: 'all', label: 'All statuses' },
+      { key: 'today', label: "Today's registrations" },
+      { key: 'incomplete', label: 'Incomplete profiles' },
+      ...ALL_STATUSES.map(k => ({ key: k, label: STATUS_LABELS[k] || k })),
+    ];
+    const sortOptions = [
+      { key: 'submitted_at', label: 'Submitted Date' },
+      { key: 'name', label: 'Name' },
+      { key: 'created_at', label: 'Created Date' },
+      { key: 'joining_year', label: 'Joining Year' },
+      { key: 'palia_number', label: 'Palia Number' },
+      { key: 'registration_no', label: 'Reg. No.' },
+    ];
+
+    const html = `
+      <div class="modal-header">
+        <div class="modal-title">Export Sebayats to CSV</div>
+        <div class="modal-desc">Choose which columns to include and filter the data before exporting.</div>
+      </div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:18px">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--ink2);margin-bottom:10px">1. Select columns to export</div>
+          <div style="display:flex;gap:8px;margin-bottom:10px">
+            <button type="button" class="btn btn-ghost btn-sm" id="export-select-all" style="font-size:12px">Select All</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="export-deselect-all" style="font-size:12px">Deselect All</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="export-default" style="font-size:12px">Default Set</button>
+          </div>
+          <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--surface)">
+            ${groups.map(g => `
+              <div style="margin-bottom:10px">
+                <div style="font-size:11px;font-weight:600;color:var(--ink3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">${esc(g)}</div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px">
+                  ${allCols.filter(c => c.group === g).map(c => `
+                    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:4px 10px;border-radius:6px;border:1px solid var(--border);font-size:12px;background:${defaultCols.includes(c.key) ? 'var(--bg2)' : 'transparent'}">
+                      <input type="checkbox" class="export-col-cb" value="${esc(c.key)}" ${defaultCols.includes(c.key) ? 'checked' : ''} style="accent-color:var(--saffron);width:14px;height:14px" />
+                      ${esc(c.label)}
+                    </label>
+                  `).join('')}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--ink2);margin-bottom:10px">2. Filter data to export</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="field" style="margin:0">
+              <label style="font-size:12px">Status Filter</label>
+              <select id="export-status-filter">
+                ${statusOptions.map(o => `<option value="${esc(o.key)}" ${state.filter === o.key ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="field" style="margin:0">
+              <label style="font-size:12px">Search (name, phone, bansa, seba…)</label>
+              <input id="export-search" type="text" placeholder="Leave empty to export all matching" value="${esc(state.search)}" />
+            </div>
+            <div class="field" style="margin:0">
+              <label style="font-size:12px">Sort By</label>
+              <select id="export-sort-key">
+                ${sortOptions.map(o => `<option value="${esc(o.key)}" ${state.sort.key === o.key ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="field" style="margin:0">
+              <label style="font-size:12px">Sort Direction</label>
+              <select id="export-sort-dir">
+                <option value="desc" ${state.sort.dir === 'desc' ? 'selected' : ''}>Descending</option>
+                <option value="asc" ${state.sort.dir === 'asc' ? 'selected' : ''}>Ascending</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div style="padding:10px 14px;background:var(--bg2);border-radius:8px;font-size:12px;color:var(--ink3)">
+          <span id="export-count-preview">Calculating…</span> sebayats will be exported.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="export-submit-btn">Export CSV</button>
+      </div>
+    `;
+    showModal(html);
+
+    function updateCountPreview() {
+      const statusFilter = $('#export-status-filter').value;
+      const searchQ = $('#export-search').value.trim().toLowerCase();
+      const sortKey = $('#export-sort-key').value;
+      const sortDir = $('#export-sort-dir').value;
+      const orig = { filter: state.filter, search: state.search, sort: state.sort };
+      state.filter = statusFilter; state.search = searchQ; state.sort = { key: sortKey, dir: sortDir };
+      const count = filteredSebayats().length;
+      state.filter = orig.filter; state.search = orig.search; state.sort = orig.sort;
+      const el = $('#export-count-preview');
+      if (el) el.textContent = `${count} sebayat${count !== 1 ? 's' : ''}`;
+    }
+    setTimeout(updateCountPreview, 50);
+
+    function setExportColumns(selectedKeys) {
+      $$('.export-col-cb').forEach((cb) => {
+        const selected = selectedKeys === null || selectedKeys.includes(cb.value);
+        cb.checked = selected;
+        const label = cb.closest('label');
+        if (label) label.style.background = selected ? 'var(--bg2)' : 'transparent';
+      });
+    }
+
+    $('#export-select-all').onclick = () => setExportColumns(null);
+    $('#export-deselect-all').onclick = () => setExportColumns([]);
+    $('#export-default').onclick = () => setExportColumns(defaultCols);
+    $$('.export-col-cb').forEach((cb) => {
+      cb.onchange = () => {
+        const label = cb.closest('label');
+        if (label) label.style.background = cb.checked ? 'var(--bg2)' : 'transparent';
+      };
+    });
+    $('#export-status-filter').onchange = updateCountPreview;
+    $('#export-search').oninput = updateCountPreview;
+
+    $('#export-submit-btn').onclick = () => {
+      const selectedCols = $$('.export-col-cb').filter(cb => cb.checked).map(cb => cb.value);
+      if (selectedCols.length === 0) { showToast('Select at least one column to export.', 'warning'); return; }
+      const statusFilter = $('#export-status-filter').value;
+      const searchQ = $('#export-search').value;
+      const sortKey = $('#export-sort-key').value;
+      const sortDir = $('#export-sort-dir').value;
+      const orig = { filter: state.filter, search: state.search, sort: state.sort };
+      state.filter = statusFilter; state.search = searchQ; state.sort = { key: sortKey, dir: sortDir };
+      const rows = sortedSebayats(filteredSebayats());
+      state.filter = orig.filter; state.search = orig.search; state.sort = orig.sort;
+      if (rows.length === 0) { showToast('No sebayats match the selected filters.', 'warning'); return; }
+      const colDefs = allCols.filter(c => selectedCols.includes(c.key));
+      const headers = colDefs.map(c => c.label);
+      const csv = '\ufeff' + [headers.join(',')].concat(rows.map(r => colDefs.map(c => {
+        let v = r[c.key] ?? '';
+        if (c.key === 'full_name') v = getName(r);
+        if (typeof v === 'boolean') v = v ? 'Yes' : 'No';
+        if ((c.key === 'submitted_at' || c.key === 'reviewed_at' || c.key === 'created_at') && v) v = fmtDate(v, true);
+        if (c.key === 'date_of_birth' && v) v = fmtDate(v);
+        v = String(v).replace(/"/g, '""');
+        return /[,"\n]/.test(v) ? `"${v}"` : v;
+      }).join(','))).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sebayats-${new Date().toISOString().slice(0,10)}.csv`;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      logActivity('export', 'sebayat_profiles', null, `${rows.length} rows exported (${selectedCols.length} columns)`, null, null, { count: rows.length, cols: selectedCols.length, filter: statusFilter });
+      showToast(`Exported ${rows.length} sebayats with ${selectedCols.length} columns.`, 'success');
+      closeModal();
+    };
+  },
+
   exportCsv() {
-    const rows = sortedSebayats(filteredSebayats());
-    if (rows.length === 0) { showToast('Nothing to export', 'warning'); return; }
-    const cols = ['full_name','phone','email','seba_name','bansa_name','palia_number','registration_no','profile_status','joining_year','submitted_at','reviewed_at'];
-    const headers = ['Name','Phone','Email','Seba','Bansa','Palia','Reg. No.','Status','Joining Year','Submitted','Reviewed'];
-    const csv = [headers.join(',')].concat(rows.map(r => cols.map(c => {
-      let v = r[c] ?? '';
-      if (c === 'full_name') v = getName(r);
-      v = String(v).replace(/"/g, '""');
-      return /[,"\n]/.test(v) ? `"${v}"` : v;
-    }).join(','))).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `sebayats-${new Date().toISOString().slice(0,10)}.csv`;
-    a.click(); URL.revokeObjectURL(url);
-    logActivity('export', 'sebayat_profiles', null, `${rows.length} rows exported`, null, null, { count: rows.length, filter: state.filter });
-    showToast(`Exported ${rows.length} rows`, 'success');
+    actions.openExportModal();
   },
 
   openAddAdmin() {
@@ -2668,6 +3188,8 @@ Object.assign(actions, {
 // DRAWER
 // ============================================================
 async function openDrawer(s) {
+  if (!s) return;
+  state.currentSebayat = s;
   state.drawerTab = 'overview';
   $('#drawer-title').textContent = getName(s);
   $('#drawer-sub').textContent = (s.phone ? '+' + s.phone : '') + (s.registration_no ? ' · Reg ' + s.registration_no : '');
@@ -2675,12 +3197,14 @@ async function openDrawer(s) {
   if (s.photo_url) { av.style.backgroundImage = `url('${s.photo_url}')`; av.textContent = ''; }
   else { av.style.backgroundImage = ''; av.textContent = getInitials(s); }
   $$('.drawer-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'overview'));
+  $('#drawer-overlay').hidden = false;
   $('#drawer-overlay').classList.add('open');
   await renderDrawer();
 }
 
 function closeDrawer() {
   $('#drawer-overlay').classList.remove('open');
+  $('#drawer-overlay').hidden = true;
   state.currentSebayat = null;
 }
 
@@ -2697,11 +3221,19 @@ async function renderDrawer() {
 
   const status = s.profile_status || 'draft';
   const canAct = ['submitted','resubmitted'].includes(status);
+  const isSuspended = s.is_suspended === true;
+  const suspendBtn = isSuspended
+    ? `<button class="btn btn-success" style="flex:1" onclick="actions.toggleSuspend('${esc(s.id)}', false)">Activate</button>`
+    : `<button class="btn btn-danger" style="flex:1" onclick="actions.toggleSuspend('${esc(s.id)}', true)">Suspend (Basanda)</button>`;
   footer.innerHTML = canAct ? `
     <button class="btn btn-success" style="flex:1" onclick="actions.openAction('${esc(s.id)}','approve')">Approve</button>
     <button class="btn btn-warning" style="flex:1" onclick="actions.openAction('${esc(s.id)}','changes')">Request Changes</button>
     <button class="btn btn-danger" style="flex:1" onclick="actions.openAction('${esc(s.id)}','reject')">Reject</button>
-  ` : `<button class="btn btn-ghost" style="flex:1" onclick="closeDrawer()">Close</button>`;
+    ${suspendBtn}
+  ` : `
+    ${suspendBtn}
+    <button class="btn btn-ghost" style="flex:1" onclick="closeDrawer()">Close</button>
+  `;
 
   // Photo lightbox
   $$('.photo-tile[data-src]').forEach(el => {
@@ -2761,7 +3293,7 @@ async function drawerOverview(s) {
         <div class="detail-section-line"></div>
       </div>
       <div class="detail-card">
-        ${detailRow('Current Status', `<span class="status-badge status-${esc(status)}">${esc(STATUS_LABELS[status] || status)}</span>`, true)}
+        ${detailRow('Current Status', `<span class="status-badge status-${esc(status)}">${esc(STATUS_LABELS[status] || status)}</span>${s.is_deceased ? ' &middot; <span class="status-badge status-deceased">Deceased</span>' : ''}${s.is_suspended && !s.is_deceased ? ' &middot; <span class="status-badge status-suspended" style="background:#FEE2E2;color:#DC2626;border:1px solid #FECACA">Suspended</span>' : ''}`, true)}
         ${detailRow('Submitted', s.submitted_at ? fmtDate(s.submitted_at, true) : '—')}
         ${s.reviewed_at ? detailRow(
           status === 'approved' ? 'Approved On' : status === 'rejected' ? 'Rejected On' : status === 'changes_requested' ? 'Changes Requested On' : 'Reviewed',
@@ -2789,7 +3321,7 @@ async function drawerOverview(s) {
       <div class="detail-section-header"><span class="detail-section-title">Contact</span><div class="detail-section-line"></div></div>
       <div class="detail-card">
         ${detailRow('Phone', s.phone ? `<a href="tel:+${esc(s.phone)}">+${esc(s.phone)}</a>` : '', true)}
-        ${detailRow('WhatsApp', s.whatsapp_number ? `<a href="https://wa.me/${esc(s.whatsapp_number)}" target="_blank">+${esc(s.whatsapp_number)}</a>` : '', true)}
+        ${detailRow('WhatsApp', s.whatsapp_number ? (() => { const number = String(s.whatsapp_number).replace(/^\+/, ''); const fullNumber = number.startsWith('91') ? number : '91' + number; return `<a href="https://wa.me/${esc(fullNumber)}" target="_blank">+${esc(fullNumber)}</a>`; })() : '', true)}
         ${detailRow('Email', s.email ? `<a href="mailto:${esc(s.email)}">${esc(s.email)}</a>` : '', true)}
       </div>
     </div>
@@ -2798,7 +3330,15 @@ async function drawerOverview(s) {
       <div class="detail-section-header"><span class="detail-section-title">Family</span><div class="detail-section-line"></div></div>
       <div class="detail-card">
         ${detailRow('Father', s.father_name)}
+        ${s.father_dob ? detailRow('Father DOB', fmtDate(s.father_dob)) : ''}
         ${detailRow('Mother', s.mother_name)}
+        ${s.mother_dob ? detailRow('Mother DOB', fmtDate(s.mother_dob)) : ''}
+        ${s.spouse_name ? detailRow('Spouse', s.spouse_name) : ''}
+        ${s.spouse_dob ? detailRow('Spouse DOB', fmtDate(s.spouse_dob)) : ''}
+        ${s.spouse_father_name ? detailRow("Spouse's Father", s.spouse_father_name) : ''}
+        ${s.spouse_father_dob ? detailRow("Spouse Father DOB", fmtDate(s.spouse_father_dob)) : ''}
+        ${s.spouse_mother_name ? detailRow("Spouse's Mother", s.spouse_mother_name) : ''}
+        ${s.spouse_mother_dob ? detailRow("Spouse Mother DOB", fmtDate(s.spouse_mother_dob)) : ''}
         ${s.father_sebayat_id ? detailRow('Father Sebayat ID', `<span style="font-family:monospace;font-size:11px">${esc(s.father_sebayat_id.slice(0,8))}…</span>`, true) : ''}
       </div>
     </div>
@@ -2808,10 +3348,12 @@ async function drawerOverview(s) {
       <div class="detail-card">
         ${detailRow('Bansa', s.bansa_name)}
         ${detailRow('Palia Number', s.palia_number)}
-        ${detailRow('Seba Name', s.seba_name)}
+        ${detailRow('Seba Name', s.seba_name || state.sebaNamesBySebayat[s.id] || '—')}
         ${detailRow('Joining', s.joining_date_exact ? fmtDate(s.joining_date) : (s.joining_year || s.joining_date))}
-        ${detailRow('Bhagari', s.is_bhagari ? 'Yes' : (s.is_bhagari === false ? 'No' : ''))}
         ${detailRow('Baristha Bhai Pua', s.is_baristha_bhai_pua ? 'Yes' : (s.is_baristha_bhai_pua === false ? 'No' : ''))}
+        ${detailRow('Bhai Pua', s.is_bhai_pua ? 'Yes' : (s.is_bhai_pua === false ? 'No' : ''))}
+        ${detailRow('Bhagari', s.is_bhagari ? 'Yes' : (s.is_bhagari === false ? 'No' : ''))}
+        ${detailRow('Palia', s.is_palia ? 'Yes' : (s.is_palia === false ? 'No' : ''))}
       </div>
     </div>
 
@@ -2856,6 +3398,19 @@ async function drawerOverview(s) {
       </div>
     </div>` : ''}
 
+    ${s.is_deceased ? `
+    <div class="detail-section">
+      <div class="detail-section-header"><span class="detail-section-title" style="color:var(--red,#DC2626)">Death Details</span><div class="detail-section-line"></div></div>
+      <div class="detail-card">
+        ${detailRow('Date of Death', s.date_of_death ? fmtDate(s.date_of_death) : '—')}
+        ${detailRow('Place of Death', s.place_of_death)}
+        ${detailRow('Cause of Death', s.cause_of_death)}
+        ${detailRow('Notes', s.death_notes)}
+        ${s.deactivated_at ? detailRow('Deactivated On', fmtDate(s.deactivated_at, true)) : ''}
+        ${s.reassigned_to ? (() => { const r = state.sebayats.find(x => x.id === s.reassigned_to); return detailRow('Nijog Reassigned To', r ? getName(r) : '—'); })() : ''}
+      </div>
+    </div>` : ''}
+
     <div class="detail-section">
       <div class="detail-section-header"><span class="detail-section-title">Health</span><div class="detail-section-line"></div></div>
       <div class="detail-card">
@@ -2863,6 +3418,14 @@ async function drawerOverview(s) {
       </div>
       ${s.health_card_photo_url ? `<div class="photo-grid" style="margin-top:10px"><div class="photo-tile" data-src="${esc(s.health_card_photo_url)}" style="background-image:url('${esc(s.health_card_photo_url)}')"><div class="photo-tile-label">Health Card</div></div></div>` : ''}
     </div>
+
+    ${s.hobby ? `
+    <div class="detail-section">
+      <div class="detail-section-header"><span class="detail-section-title">Hobby</span><div class="detail-section-line"></div></div>
+      <div class="detail-card">
+        ${detailRow('Hobby', s.hobby)}
+      </div>
+    </div>` : ''}
 
     ${(s.social_facebook || s.social_twitter || s.social_instagram || s.social_linkedin || s.social_youtube) ? `
     <div class="detail-section">
@@ -3008,6 +3571,11 @@ $$('.drawer-tab').forEach(t => {
 
 $('#drawer-close').onclick = closeDrawer;
 $('#drawer-overlay').onclick = (e) => { if (e.target === $('#drawer-overlay')) closeDrawer(); };
+$('#drawer-overlay').classList.remove('open');
+$('#drawer-overlay').hidden = true;
+$('#modal-overlay').classList.remove('open');
+$('#modal-overlay').hidden = true;
+state.currentSebayat = null;
 
 // ============================================================
 // MODAL
@@ -3017,6 +3585,7 @@ function showModal(html, opts = {}) {
   modal.innerHTML = html;
   if (opts.wide) modal.classList.add('modal--wide');
   else modal.classList.remove('modal--wide');
+  $('#modal-overlay').hidden = false;
   $('#modal-overlay').classList.add('open');
 }
 
@@ -3062,6 +3631,7 @@ function showConfirm({ title = 'Are you sure?', message = '', confirmLabel = 'Co
 
 function closeModal() {
   $('#modal-overlay').classList.remove('open');
+  $('#modal-overlay').hidden = true;
   $('#modal').innerHTML = '';
   $('#modal').classList.remove('modal--wide');
   $('#modal').classList.remove('modal--perm-wide');
@@ -3076,7 +3646,7 @@ function openActionModal() {
   const { type, sebayat, sebayatIds, bulk } = state.pendingAction;
   const titles = { approve: 'Approve Application', reject: 'Reject Application', changes: 'Request Changes' };
   const descs = {
-    approve: bulk ? `Approve ${sebayatIds.length} applications. Optionally add remarks. Applicants will be notified.` : 'Assign a registration number and confirm approval. The applicant will be notified.',
+    approve: bulk ? `Approve ${sebayatIds.length} applications. Registration numbers will be assigned automatically. Applicants will be notified.` : 'A registration number will be assigned automatically. Enter a special number only when needed. The applicant will be notified.',
     reject: bulk ? `Reject ${sebayatIds.length} applications. Provide a reason — this will be visible to the applicants.` : 'Provide a clear reason for rejection. The applicant will see your remarks.',
     changes: bulk ? `Request changes for ${sebayatIds.length} applications. Describe what needs to be corrected.` : 'Describe what needs to be corrected. The applicant will be asked to update and resubmit.',
   };
@@ -3112,8 +3682,9 @@ function openActionModal() {
       ${ctx}
       ${type === 'approve' && !bulk ? `
         <div class="field">
-          <label>Registration Number ${sebayat.registration_no ? '(currently: ' + esc(sebayat.registration_no) + ')' : '<span style="color:var(--ink4);font-weight:500">(optional)</span>'}</label>
-          <input id="modal-reg" type="text" placeholder="e.g. PN-2025-0042" value="${esc(sebayat.registration_no || '')}" />
+          <label>Registration Number ${sebayat.registration_no ? '(currently: ' + esc(sebayat.registration_no) + ')' : '<span style="color:var(--ink4);font-weight:500">(automatic unless overridden)</span>'}</label>
+          <input id="modal-reg" type="text" placeholder="Leave blank for PN-101 onward, or enter PN-001" value="${esc(sebayat.registration_no || '')}" />
+          <div style="margin-top:6px;color:var(--ink4);font-size:12px">Leave blank to assign the next available number starting from PN-101. Enter a special number when needed.</div>
         </div>
       ` : ''}
       ${checklist}
@@ -3177,23 +3748,39 @@ async function confirmAction() {
   let successes = 0, errors = 0;
   for (const id of sebayatIds) {
     const s = state.sebayats.find(x => x.id === id);
-    const updates = {
-      profile_status: newStatus,
-      admin_remarks: remarks,
-      reviewed_at: new Date().toISOString(),
-      reviewed_by: state.user.id,
-      ...(type === 'changes' ? { change_section: changeSection, change_sections: changeSections } : { change_section: null, change_sections: null }),
-    };
-    if (type === 'approve' && regNo && !bulk) updates.registration_no = regNo;
-    const { error } = await db.from('sebayats').update(updates).eq('id', id);
+    let assignedRegistrationNo = s?.registration_no || '';
+    let error = null;
+
+    if (type === 'approve') {
+      const result = await db.rpc('approve_sebayat_with_registration', {
+        p_sebayat_id: id,
+        p_registration_no: bulk ? null : (regNo || null),
+        p_admin_remarks: remarks || '',
+      });
+      assignedRegistrationNo = result.data || '';
+      error = result.error;
+    } else {
+      const updates = {
+        profile_status: newStatus,
+        admin_remarks: remarks,
+        reviewed_at: new Date().toISOString(),
+        reviewed_by: state.user.id,
+        ...(type === 'changes' ? { change_section: changeSection, change_sections: changeSections } : { change_section: null, change_sections: null }),
+      };
+      const result = await db.from('sebayats').update(updates).eq('id', id);
+      error = result.error;
+      if (!error) {
+        await db.from('profile_review_history').insert({
+          sebayat_id: id,
+          from_status: s?.profile_status || '',
+          to_status: newStatus,
+          remarks: remarks || '',
+          changed_by: state.user.id,
+        });
+      }
+    }
+
     if (error) { errors++; continue; }
-    await db.from('profile_review_history').insert({
-      sebayat_id: id,
-      from_status: s?.profile_status || '',
-      to_status: newStatus,
-      remarks: remarks || '',
-      changed_by: state.user.id,
-    });
     logActivity(
       type === 'approve' ? 'approve' : type === 'reject' ? 'reject' : 'update',
       'sebayat_profiles', id,
@@ -3208,7 +3795,7 @@ async function confirmAction() {
     dispatchNotification(eventKeyMap[type], id, {
       name,
       remarks: remarks || '',
-      registration_no: regNo || s?.registration_no || '',
+      registration_no: assignedRegistrationNo,
       reference_type: 'sebayat',
       reference_id: id,
     });
@@ -3234,6 +3821,14 @@ async function confirmAction() {
 const SEBA_CAT_TYPES = [
   { key: 'seba', label: 'Seba Name', desc: 'Service/duty names performed by sebayats' },
 ];
+let SAHI_LIST = [];
+
+async function loadSahiList() {
+  try {
+    const { data } = await db.from('sahis').select('name').eq('is_active', true).order('sort_order').order('name');
+    if (data) SAHI_LIST = data.map(s => s.name);
+  } catch (_e) { /* table may not exist yet */ }
+}
 
 function renderSebaCategories() {
   const tab = state.sebaCatTab;
@@ -3706,7 +4301,7 @@ function apAddress(prefix, titleLabel) {
   return `
     ${apSection(titleLabel)}
     <div class="ap-grid">
-      ${apField(prefix + '_sahi', 'Sahi / Mohalla', 'text', 'e.g. Badaghara Sahi', req)}
+      ${apField(prefix + '_sahi', 'Sahi', 'select', '', req, SAHI_LIST)}
       ${apField(prefix + '_landmark', 'Landmark', 'text', 'Nearby landmark', req)}
       ${apField(prefix + '_post_office', 'Post Office', 'text', 'Post office name', req)}
       ${apField(prefix + '_police_station', 'Police Station', 'text', 'Police station name', req)}
@@ -3772,9 +4367,7 @@ function renderAddProfile() {
   if (!p.children) p.children = [];
   if (p.joining_date_exact === undefined) p.joining_date_exact = true;
   // Mark _bhagari_selected true if either flag is already set (e.g. navigating back)
-  if (p.is_bhagari === true || p.is_bhagari === 'true' || p.is_baristha_bhai_pua === true || p.is_baristha_bhai_pua === 'true') {
-    p._bhagari_selected = true;
-  }
+
   const isLast = step === ADD_PROFILE_STEPS.length - 1;
 
   const stepsHtml = ADD_PROFILE_STEPS.map((s, i) => {
@@ -3806,19 +4399,24 @@ function renderAddProfile() {
           ${['Male','Female'].map(g => `<button class="ap-chip${p.gender === g ? ' active' : ''}" data-ap-chip="gender" data-val="${esc(g)}">${esc(g)}</button>`).join('')}
         </div>
       </div>
-      <div class="ap-radio-group-block">
-        <div class="ap-radio-group-label">Bhagari / Baristha Bhai Pua <span style="color:var(--red)">*</span></div>
-        <div class="ap-radio-group-desc">Select one that applies to this sebayat</div>
-        <div class="ap-radio-options">
+      <div class="ap-status-group">
+        <div class="ap-status-heading">
+          <div class="ap-radio-group-label">Sebayat Status</div>
+          <div class="ap-radio-group-desc">Select all that apply</div>
+        </div>
+        <div class="ap-status-options">
           ${(()=>{
-            const isBhagari = p.is_bhagari === true || p.is_bhagari === 'true';
-            const isBaristha = p.is_baristha_bhai_pua === true || p.is_baristha_bhai_pua === 'true';
-            const isNeither = p._bhagari_selected && !isBhagari && !isBaristha;
-            return [['bhagari','Bhagari'],['baristha','Baristha Bhai Pua'],['neither','Neither']].map(([val, label]) => {
-              const sel = (val === 'bhagari' && isBhagari) || (val === 'baristha' && isBaristha) || (val === 'neither' && isNeither);
+            const flags = [
+              ['is_baristha_bhai_pua','Baristha Bhai Pua'],
+              ['is_bhai_pua','Bhai Pua'],
+              ['is_bhagari','Bhagari'],
+              ['is_palia','Palia'],
+            ];
+            return flags.map(([key, label]) => {
+              const sel = p[key] === true || p[key] === 'true';
               return `<label class="ap-radio-opt${sel ? ' active' : ''}">
-                <input type="radio" name="bhagari_type" value="${val}" ${sel ? 'checked' : ''} class="ap-bhagari-radio" />
-                <span class="ap-radio-circle"></span>
+                <input type="checkbox" data-ap-status="${key}" ${sel ? 'checked' : ''} class="ap-status-checkbox" />
+                <span class="ap-radio-square"></span>
                 <span class="ap-radio-text">${label}</span>
               </label>`;
             }).join('');
@@ -3828,7 +4426,7 @@ function renderAddProfile() {
       ${apSection('Health')}
       <div class="ap-grid">
         ${apField('blood_group', 'Blood Group', 'text', '', false, ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'])}
-        ${apField('health_card_no', 'Health Card Number <span style="color:var(--red)">*</span>', 'text', '8-digit number', false, null, 'maxlength="8" inputmode="numeric" data-digits-only="true"')}
+        ${apField('health_card_no', 'Health Card Number <span style="color:var(--red)">*</span>', 'text', '4-digit number', false, null, 'maxlength="4" inputmode="numeric" data-digits-only="true"')}
       </div>`;
 
   // ── STEP 1: Contact & IDs ──
@@ -3844,7 +4442,18 @@ function renderAddProfile() {
       </div>
       <div class="ap-grid">
         ${apField('phone', 'Phone Number (Primary)', 'tel', '10-digit number', true, null, 'maxlength="10" inputmode="numeric" data-digits-only="true"')}
-        ${apField('whatsapp_number', 'WhatsApp Number', 'tel', '10-digit number', false, null, 'maxlength="10" inputmode="numeric" data-digits-only="true"')}
+        <div class="field" id="ap-wrap-whatsapp_number">
+          <div class="ap-field-label-row">
+            <label for="ap-whatsapp_number">WhatsApp Number</label>
+            <label class="ap-same-phone-option">
+              <input type="checkbox" id="ap-whatsapp-same-primary" ${p.whatsapp_same_as_primary ? 'checked' : ''} />
+              <span class="ap-checkbox-box"></span>
+              <span>Same as Primary Number</span>
+            </label>
+          </div>
+          <input id="ap-whatsapp_number" data-ap="whatsapp_number" type="tel" placeholder="10-digit number" value="${esc(String(p.whatsapp_number || ''))}" maxlength="10" inputmode="numeric" data-digits-only="true" ${p.whatsapp_same_as_primary ? 'disabled' : ''} />
+          <div class="ap-field-error" id="ap-err-whatsapp_number"></div>
+        </div>
         ${apField('email', 'Email Address', 'email', 'email@example.com')}
       </div>
       ${apSection('Additional Phone Numbers')}
@@ -3949,7 +4558,9 @@ function renderAddProfile() {
     const children = p.children || [];
     body = `
       ${apFatherSearch()}
+      ${apField('father_dob', 'Father\'s Date of Birth', 'date', '', true)}
       ${apField('mother_name', 'Mother\'s Full Name <span style="color:var(--red)">*</span>', 'text', 'Full name')}
+      ${apField('mother_dob', 'Mother\'s Date of Birth', 'date', '', true)}
       <div class="ap-chips-row">
         <div class="ap-chips-label">Marital Status <span style="color:var(--red)">*</span></div>
         <div class="ap-chips">
@@ -3960,8 +4571,11 @@ function renderAddProfile() {
         ${apSection('Spouse Details')}
         <div class="ap-grid">
           ${apField('spouse_name', 'Spouse Name', 'text', 'Full name', true)}
+          ${apField('spouse_dob', 'Spouse Date of Birth', 'date', '', true)}
           ${apField('spouse_father_name', "Spouse's Father Name", 'text', 'Full name', true)}
+          ${apField('spouse_father_dob', "Spouse's Father DOB", 'date', '', true)}
           ${apField('spouse_mother_name', "Spouse's Mother Name", 'text', 'Full name', true)}
+          ${apField('spouse_mother_dob', "Spouse's Mother DOB", 'date', '', true)}
         </div>
         ${apSection('Children')}
         ${children.map((child, i) => `
@@ -3973,6 +4587,7 @@ function renderAddProfile() {
               </button>
             </div>
             <input type="text" class="ap-child-field" data-child-idx="${i}" data-child-field="child_name" placeholder="Full name" value="${esc(child.child_name || '')}" style="margin-bottom:8px" />
+            <input type="date" class="ap-child-field" data-child-idx="${i}" data-child-field="date_of_birth" placeholder="Date of birth" value="${esc(child.date_of_birth || '')}" style="margin-bottom:8px" />
             <div class="ap-chips-row" style="margin-bottom:8px">
               <div class="ap-chips-label">Gender</div>
               <div class="ap-chips">
@@ -4038,13 +4653,22 @@ function renderAddProfile() {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
             </button>` : ''}
           </div>
-          <input type="text" class="ap-occ-field" data-occ-idx="${i}" data-occ-field="occupation" placeholder="e.g. Teacher, Engineer" value="${esc(occ.occupation || '')}" style="margin-bottom:8px" />
-          <input type="text" class="ap-occ-field" data-occ-idx="${i}" data-occ-field="extra_curriculum_activity" placeholder="e.g. Sports coaching" value="${esc(occ.extra_curriculum_activity || '')}" />
+          <div class="ap-occ-fields">
+            <div class="ap-occ-field-wrap">
+              <label for="ap-occ-${i}">Occupation</label>
+              <input id="ap-occ-${i}" type="text" class="ap-occ-field" data-occ-idx="${i}" data-occ-field="occupation" placeholder="e.g. Teacher, Engineer" value="${esc(occ.occupation || '')}" />
+            </div>
+            <div class="ap-occ-field-wrap">
+              <label for="ap-occ-activity-${i}">Extra Curriculum Activity</label>
+              <input id="ap-occ-activity-${i}" type="text" class="ap-occ-field" data-occ-idx="${i}" data-occ-field="extra_curriculum_activity" placeholder="e.g. Sports coaching" value="${esc(occ.extra_curriculum_activity || '')}" />
+            </div>
+          </div>
         </div>`).join('')}
       <button class="ap-add-btn" id="ap-add-occ">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Add another occupation
-      </button>`;
+      </button>
+      ${apField('hobby', 'Hobby', 'text', 'e.g. Reading, Gardening, Music')}`;
 
   // ── STEP 6: Social & Review ──
   } else if (step === 6) {
@@ -4085,8 +4709,10 @@ function renderAddProfile() {
           ${p.date_of_birth ? detailRow('Date of Birth', fmtDate(p.date_of_birth)) : ''}
           ${p.gender ? detailRow('Gender', p.gender) : ''}
           ${p.blood_group ? detailRow('Blood Group', p.blood_group) : ''}
-          ${p.is_bhagari === true || p.is_bhagari === 'true' ? detailRow('Bhagari', 'Yes') : ''}
           ${p.is_baristha_bhai_pua === true || p.is_baristha_bhai_pua === 'true' ? detailRow('Baristha Bhai Pua', 'Yes') : ''}
+          ${p.is_bhai_pua === true || p.is_bhai_pua === 'true' ? detailRow('Bhai Pua', 'Yes') : ''}
+          ${p.is_bhagari === true || p.is_bhagari === 'true' ? detailRow('Bhagari', 'Yes') : ''}
+          ${p.is_palia === true || p.is_palia === 'true' ? detailRow('Palia', 'Yes') : ''}
         </div>
         <div class="detail-card" style="margin-bottom:12px">
           ${p.phone ? detailRow('Phone', '+' + p.phone) : detailRow('Phone', '—')}
@@ -4096,9 +4722,14 @@ function renderAddProfile() {
         </div>
         <div class="detail-card" style="margin-bottom:12px">
           ${p.father_name ? detailRow('Father', p.father_name + (p.father_sebayat_id ? ' (linked)' : '')) : ''}
+          ${p.father_dob ? detailRow('Father DOB', fmtDate(p.father_dob)) : ''}
           ${p.mother_name ? detailRow('Mother', p.mother_name) : ''}
+          ${p.mother_dob ? detailRow('Mother DOB', fmtDate(p.mother_dob)) : ''}
           ${p.marital_status ? detailRow('Marital Status', p.marital_status) : ''}
           ${p.spouse_name ? detailRow('Spouse', p.spouse_name) : ''}
+          ${p.spouse_dob ? detailRow('Spouse DOB', fmtDate(p.spouse_dob)) : ''}
+          ${p.spouse_father_name ? detailRow("Spouse's Father", p.spouse_father_name) : ''}
+          ${p.spouse_mother_name ? detailRow("Spouse's Mother", p.spouse_mother_name) : ''}
         </div>
         <div class="detail-card" style="margin-bottom:12px">
           ${detailRow('Permanent Address', reviewAddr)}
@@ -4175,7 +4806,7 @@ function apValidateField(id, value) {
     case 'date_of_birth': if (!v) { apSetError(id, 'Date of Birth is required'); return false; } break;
     case 'health_card_no':
       if (!v) { apSetError(id, 'Health Card Number is required'); return false; }
-      if (!/^\d{8}$/.test(v)) { apSetError(id, 'Must be exactly 8 digits'); return false; }
+      if (!/^\d{1,4}$/.test(v)) { apSetError(id, 'Must be 1-4 digits'); return false; }
       break;
     case 'phone':
       if (!v) { apSetError(id, 'Phone Number is required'); return false; }
@@ -4191,7 +4822,7 @@ function apValidateField(id, value) {
     case 'spouse_name': if (state.newProfile.marital_status === 'Married' && !v) { apSetError(id, 'Spouse Name is required'); return false; } break;
     case 'spouse_father_name': if (state.newProfile.marital_status === 'Married' && !v) { apSetError(id, "Spouse's Father Name is required"); return false; } break;
     case 'spouse_mother_name': if (state.newProfile.marital_status === 'Married' && !v) { apSetError(id, "Spouse's Mother Name is required"); return false; } break;
-    case 'permanent_sahi':          if (!v) { apSetError(id, 'Sahi / Mohalla is required'); return false; } break;
+    case 'permanent_sahi':          if (!v) { apSetError(id, 'Sahi is required'); return false; } break;
     case 'permanent_landmark':      if (!v) { apSetError(id, 'Landmark is required'); return false; } break;
     case 'permanent_post_office':   if (!v) { apSetError(id, 'Post Office is required'); return false; } break;
     case 'permanent_police_station':if (!v) { apSetError(id, 'Police Station is required'); return false; } break;
@@ -4219,14 +4850,10 @@ function attachAddProfileHandlers() {
     $$('[data-ap-toggle]').forEach(el => {
       state.newProfile[el.dataset.apToggle] = el.checked;
     });
-    // Bhagari/Baristha radio
-    const bhagariRadio = document.querySelector('input[name="bhagari_type"]:checked');
-    if (bhagariRadio) {
-      const val = bhagariRadio.value;
-      state.newProfile.is_bhagari = val === 'bhagari';
-      state.newProfile.is_baristha_bhai_pua = val === 'baristha';
-      state.newProfile._bhagari_selected = true;
-    }
+    // Sebayat status checkboxes
+    $$('.ap-status-checkbox').forEach(el => {
+      state.newProfile[el.dataset.apStatus] = el.checked;
+    });
     // Extra phones
     const phoneCells = $$('.ap-extra-phone');
     if (phoneCells.length > 0) {
@@ -4272,8 +4899,26 @@ function attachAddProfileHandlers() {
     };
   });
 
-  // Duplicate phone check on blur for the primary phone field
+  const apWhatsappInput = $('#ap-whatsapp_number');
+  const apSamePrimary = $('#ap-whatsapp-same-primary');
+  const syncWhatsappWithPrimary = () => {
+    if (!apWhatsappInput || !apPhoneInput || !apSamePrimary?.checked) return;
+    apWhatsappInput.value = apPhoneInput.value;
+    state.newProfile.whatsapp_number = apPhoneInput.value;
+  };
   const apPhoneInput = $('#ap-phone');
+  if (apPhoneInput) {
+    apPhoneInput.addEventListener('input', syncWhatsappWithPrimary);
+  }
+  if (apSamePrimary && apWhatsappInput) {
+    apSamePrimary.onchange = () => {
+      state.newProfile.whatsapp_same_as_primary = apSamePrimary.checked;
+      if (apSamePrimary.checked) syncWhatsappWithPrimary();
+      apWhatsappInput.disabled = apSamePrimary.checked;
+    };
+  }
+
+  // Duplicate phone check on blur for the primary phone field
   if (apPhoneInput) {
     apPhoneInput.addEventListener('blur', async () => {
       const val = apPhoneInput.value.trim();
@@ -4345,11 +4990,9 @@ function attachAddProfileHandlers() {
       if (!np.last_name?.trim()) { showToast('Last Name is required', 'error'); return; }
       if (!np.date_of_birth) { showToast('Date of Birth is required', 'error'); return; }
       if (!np.gender) { showToast('Gender is required', 'error'); return; }
-      if (!np._bhagari_selected && np.is_bhagari !== true && np.is_bhagari !== 'true' && np.is_baristha_bhai_pua !== true && np.is_baristha_bhai_pua !== 'true') {
-        showToast('Please select Bhagari, Baristha Bhai Pua, or Neither', 'error'); return;
-      }
+
       if (!np.health_card_no?.trim()) { showToast('Health Card Number is required', 'error'); return; }
-      if (!/^\d{8}$/.test(np.health_card_no?.trim())) { showToast('Health Card Number must be exactly 8 digits', 'error'); return; }
+      if (!/^\d{1,4}$/.test(np.health_card_no?.trim())) { showToast('Health Card Number must be 1-4 digits', 'error'); return; }
     }
     if (step === 1) {
       if (!np.phone?.trim()) { showToast('Phone Number is required', 'error'); return; }
@@ -4374,7 +5017,7 @@ function attachAddProfileHandlers() {
       }
     }
     if (step === 4) {
-      if (!np.permanent_sahi?.trim()) { showToast('Sahi / Mohalla is required', 'error'); return; }
+      if (!np.permanent_sahi?.trim()) { showToast('Sahi is required', 'error'); return; }
       if (!np.permanent_landmark?.trim()) { showToast('Landmark is required', 'error'); return; }
       if (!np.permanent_post_office?.trim()) { showToast('Post Office is required', 'error'); return; }
       if (!np.permanent_police_station?.trim()) { showToast('Police Station is required', 'error'); return; }
@@ -4392,9 +5035,9 @@ function attachAddProfileHandlers() {
     render();
   };
 
-  // Bhagari/Baristha radio buttons
-  $$('.ap-bhagari-radio').forEach(radio => {
-    radio.onchange = () => {
+  // Sebayat status checkboxes
+  $$('.ap-status-checkbox').forEach(chk => {
+    chk.onchange = () => {
       collectFields();
       render();
     };
@@ -4486,6 +5129,7 @@ function attachAddProfileHandlers() {
     input.onchange = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
+      collectFields();
       const idx = parseInt(input.dataset.docIdx);
       const ext = file.name.split('.').pop() || 'jpg';
       const tempId = state.newProfile._tempId || ('new-' + Date.now());
@@ -4547,10 +5191,15 @@ function attachAddProfileHandlers() {
     fatherSearchInput.oninput = async () => {
       const q = fatherSearchInput.value.trim();
       state.newProfile.father_name = q;
-      if (q.length < 2) { state.fatherSearchResults = []; render(); return; }
+      if (q.length < 2) {
+        state.fatherSearchResults = [];
+        state.fatherSearching = false;
+        $('.ap-father-dropdown')?.remove();
+        $('.ap-search-spin')?.remove();
+        return;
+      }
       state.fatherSearching = true;
-      render();
-      const { data } = await db.from('sebayats').select('id,first_name,middle_name,last_name,full_name,date_of_birth,bansa_name').or(`full_name.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%`).in('profile_status', ['submitted','resubmitted','approved']).limit(20);
+      const { data } = await db.from('sebayats').select('id,first_name,middle_name,last_name,full_name,alias_name,date_of_birth,bansa_name').or(`full_name.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%,alias_name.ilike.%${q}%`).in('profile_status', ['submitted','resubmitted','approved']).limit(20);
       state.fatherSearching = false;
       state.fatherSearchResults = data || [];
       render();
@@ -4602,7 +5251,7 @@ function attachAddProfileHandlers() {
       if (!p.last_name?.trim()) { showToast('Last Name is required', 'error'); return; }
       if (!p.date_of_birth) { showToast('Date of Birth is required', 'error'); return; }
       if (!p.gender) { showToast('Gender is required', 'error'); return; }
-      if (!p.health_card_no?.trim() || !/^\d{8}$/.test(p.health_card_no.trim())) { showToast('Health Card Number must be 8 digits', 'error'); return; }
+      if (!p.health_card_no?.trim() || !/^\d{1,4}$/.test(p.health_card_no.trim())) { showToast('Health Card Number must be 1-4 digits', 'error'); return; }
       if (!p.phone?.trim() || !/^\d{10}$/.test(p.phone.trim())) { showToast('Phone Number must be exactly 10 digits', 'error'); return; }
       if (p.whatsapp_number?.trim() && !/^\d{10}$/.test(p.whatsapp_number.trim())) { showToast('WhatsApp Number must be exactly 10 digits', 'error'); return; }
       if (p.email?.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p.email.trim())) { showToast('Enter a valid email address', 'error'); return; }
@@ -4615,7 +5264,7 @@ function attachAddProfileHandlers() {
         if (!p.spouse_father_name?.trim()) { showToast("Spouse's Father Name is required", 'error'); return; }
         if (!p.spouse_mother_name?.trim()) { showToast("Spouse's Mother Name is required", 'error'); return; }
       }
-      if (!p.permanent_sahi?.trim()) { showToast('Sahi / Mohalla is required', 'error'); return; }
+      if (!p.permanent_sahi?.trim()) { showToast('Sahi is required', 'error'); return; }
       if (!p.permanent_landmark?.trim()) { showToast('Landmark is required', 'error'); return; }
       if (!p.permanent_post_office?.trim()) { showToast('Post Office is required', 'error'); return; }
       if (!p.permanent_police_station?.trim()) { showToast('Police Station is required', 'error'); return; }
@@ -4636,8 +5285,9 @@ function attachAddProfileHandlers() {
         first_name: toNull(p.first_name), middle_name: toNull(p.middle_name), last_name: toNull(p.last_name),
         full_name, alias_name: toNull(p.alias_name),
         date_of_birth: toNull(p.date_of_birth), gender: toNull(p.gender),
-        blood_group: toNull(p.blood_group), health_card_no: toNull(p.health_card_no),
+        blood_group: toNull(p.blood_group), health_card_no: toNull(p.health_card_no ? p.health_card_no.padStart(4, '0') : p.health_card_no),
         is_bhagari: toBool(p.is_bhagari), is_baristha_bhai_pua: toBool(p.is_baristha_bhai_pua),
+        is_bhai_pua: toBool(p.is_bhai_pua), is_palia: toBool(p.is_palia),
         phone: p.phone?.trim() ? '91' + p.phone.trim() : null,
         primary_phone: p.phone?.trim() ? '91' + p.phone.trim() : null,
         whatsapp_number: p.whatsapp_number?.trim() ? '91' + p.whatsapp_number.trim() : null,
@@ -4901,7 +5551,7 @@ function renderSebaAssign() {
     <div class="sa-page">
       <div class="sa-page-header">
         <div>
-          <h1 class="sa-page-title">Seba Assign</h1>
+          <h1 class="sa-page-title">Nijog Assign Bedha</h1>
           <p class="sa-page-sub">Assign Nijog-administered seba beddhas to sebayats for a specific year.</p>
         </div>
       </div>
@@ -5218,6 +5868,11 @@ const mpState = {
   dirty: false,
   fatherSearchResults: [],
   fatherSearching: false,
+  deathNijogAssignments: null,
+  deathReassignSearch: '',
+  deathReassignResults: [],
+  deathReassignMap: {},
+  deathSaving: false,
 };
 
 const MP_TABS = [
@@ -5228,6 +5883,7 @@ const MP_TABS = [
   { id: 'occupation', label: 'Occupation' },
   { id: 'seba',       label: 'Seba' },
   { id: 'social',     label: 'Social' },
+  { id: 'death',      label: 'Death' },
 ];
 
 function mpFilteredRows() {
@@ -5347,11 +6003,11 @@ function renderManageProfiles() {
                         </td>
                         <td>
                           <div class="cell-stack">
-                            <div class="cell-stack-main">${esc(s.seba_name || '—')}</div>
+                            <div class="cell-stack-main">${esc(s.seba_name || state.sebaNamesBySebayat[s.id] || '—')}</div>
                             ${s.bansa_name ? `<div class="cell-stack-sub">${esc(s.bansa_name)}</div>` : ''}
                           </div>
                         </td>` : ''}
-                      <td><span class="status-badge status-${esc(status)}">${esc(STATUS_LABELS[status] || status)}</span></td>
+                      <td><span class="status-badge status-${esc(status)}">${esc(STATUS_LABELS[status] || status)}</span>${s.is_deceased ? ' <span class="status-badge status-deceased">Deceased</span>' : ''}</td>
                       <td>${fmtDate(s.created_at)}</td>
                       <td>${s.created_by_admin ? '<span class="mp-source-badge mp-source-badge--admin">Admin</span>' : '<span class="mp-source-badge mp-source-badge--user">User</span>'}</td>
                       <td>
@@ -5514,8 +6170,10 @@ function mpRenderEditTab(tab, s) {
         ${mpField('blood_group', 'Blood Group', 'text', '', ['A+','A-','B+','B-','AB+','AB-','O+','O-'])}
       </div>
       <div class="ap-toggles" style="margin-top:10px">
-        ${mpField('is_bhagari', 'Bhagari', 'toggle')}
         ${mpField('is_baristha_bhai_pua', 'Baristha Bhai Pua', 'toggle')}
+        ${mpField('is_bhai_pua', 'Bhai Pua', 'toggle')}
+        ${mpField('is_bhagari', 'Bhagari', 'toggle')}
+        ${mpField('is_palia', 'Palia', 'toggle')}
       </div>
       ${mpSection('Health')}
       <div class="ap-grid">
@@ -5667,7 +6325,7 @@ function mpRenderEditTab(tab, s) {
       return `
         ${mpSection('Permanent Address')}
         <div class="ap-grid">
-          ${mpField('permanent_sahi', 'Sahi / Mohalla', 'text', 'e.g. Badaghara Sahi')}
+          ${mpField('permanent_sahi', 'Sahi', 'select', '', SAHI_LIST)}
           ${mpField('permanent_landmark', 'Landmark', 'text', 'Nearby landmark')}
           ${mpField('permanent_post_office', 'Post Office', 'text', 'Post office name')}
           ${mpField('permanent_police_station', 'Police Station', 'text', 'Police station name')}
@@ -5687,7 +6345,7 @@ function mpRenderEditTab(tab, s) {
         ${hasCurrent ? `
           ${mpSection('Current Address')}
           <div class="ap-grid">
-            ${mpField('current_sahi', 'Sahi / Mohalla')}
+            ${mpField('current_sahi', 'Sahi', 'select', '', SAHI_LIST)}
             ${mpField('current_landmark', 'Landmark')}
             ${mpField('current_post_office', 'Post Office')}
             ${mpField('current_police_station', 'Police Station')}
@@ -5735,7 +6393,8 @@ function mpRenderEditTab(tab, s) {
         <button class="ap-add-btn" id="mp-add-occ">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Add another occupation
-        </button>`;
+        </button>
+        ${mpField('hobby', 'Hobby', 'text', 'e.g. Reading, Gardening, Music')}`;
     }
 
     // ── SEBA ──────────────────────────────────────────────────
@@ -5813,6 +6472,52 @@ function mpRenderEditTab(tab, s) {
           ${mpSection('Admin Remarks')}
           ${mpField('admin_remarks', 'Remarks for sebayat', 'textarea', 'Explain what needs to change…')}
         ` : ''}`;
+    }
+
+    // ── DEATH ────────────────────────────────────────────────
+    case 'death': {
+      const isDeceased = s.is_deceased === true;
+      const reassignedTo = s.reassigned_to ? state.sebayats.find(x => x.id === s.reassigned_to) : null;
+      return `
+        ${isDeceased ? `
+          <div class="death-banner">
+            <div class="death-banner-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
+            </div>
+            <div class="death-banner-text">
+              <div class="death-banner-title">This member has been marked as deceased</div>
+              <div class="death-banner-sub">The profile is deactivated and hidden from the member directory.${reassignedTo ? ` Nijog responsibilities reassigned to <strong>${esc(getName(reassignedTo))}</strong>.` : ''}</div>
+            </div>
+          </div>
+          ${mpSection('Death Details')}
+          ${mpField('date_of_death', 'Date of Death', 'date')}
+          ${mpField('place_of_death', 'Place of Death', 'text', 'Where the sebayat passed away')}
+          ${mpField('cause_of_death', 'Cause of Death', 'text', 'If known')}
+          ${mpField('death_notes', 'Additional Notes', 'textarea', 'Any admin remarks…')}
+          ${s.deactivated_at ? `<div class="death-meta">Profile deactivated on ${esc(fmtDate(s.deactivated_at, true))}</div>` : ''}
+          <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-primary btn-sm" id="mp-death-update-btn">Update Death Details</button>
+            <button class="btn btn-ghost btn-sm" id="mp-death-reassign-btn">Reassign Nijog Responsibilities</button>
+          </div>
+        ` : `
+          <div class="ap-info-banner" style="margin-bottom:16px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            Marking a sebayat as deceased will deactivate their profile, hide it from the member directory, and allow you to reassign their Nijog seba responsibilities to another sebayat.
+          </div>
+          ${mpSection('Death Details')}
+          ${mpField('date_of_death', 'Date of Death', 'date')}
+          ${mpField('place_of_death', 'Place of Death', 'text', 'Where the sebayat passed away')}
+          ${mpField('cause_of_death', 'Cause of Death', 'text', 'If known')}
+          ${mpField('death_notes', 'Additional Notes', 'textarea', 'Any admin remarks…')}
+          <div style="margin-top:20px;padding:16px;border:1.5px solid var(--red);border-radius:10px;background:#FEF2F2">
+            <div style="font-weight:700;font-size:14px;color:var(--red);margin-bottom:6px">Confirm Deactivation</div>
+            <div style="font-size:12px;color:#991B1B;margin-bottom:12px">This action will permanently deactivate the profile. The sebayat will no longer appear in the member directory or seba rosters.</div>
+            <button class="btn btn-danger btn-sm" id="mp-mark-deceased-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+              Mark as Deceased & Deactivate
+            </button>
+          </div>
+        `}`;
     }
 
     // ── SOCIAL ────────────────────────────────────────────────
@@ -6195,7 +6900,7 @@ function attachManageProfilesHandlers() {
       mpRerender();
       const { data } = await db.from('sebayats')
         .select('id,first_name,middle_name,last_name,full_name,date_of_birth,bansa_name')
-        .or(`full_name.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%`)
+        .or(`full_name.ilike.%${q}%,first_name.ilike.%${q}%,last_name.ilike.%${q}%,alias_name.ilike.%${q}%`)
         .in('profile_status', ['submitted','resubmitted','approved'])
         .limit(15);
       mpState.fatherSearching = false;
@@ -6312,6 +7017,20 @@ function attachManageProfilesHandlers() {
       mpRerender();
     };
   });
+
+  // ── Death tab handlers ────────────────────────────────────────
+  const markDeceasedBtn = $('#mp-mark-deceased-btn');
+  if (markDeceasedBtn) markDeceasedBtn.onclick = () => {
+    if (mpState.editing) actions.markDeceased(mpState.editing);
+  };
+  const updateDeathBtn = $('#mp-death-update-btn');
+  if (updateDeathBtn) updateDeathBtn.onclick = () => {
+    if (mpState.editing) actions.updateDeathDetails(mpState.editing);
+  };
+  const reassignBtn = $('#mp-death-reassign-btn');
+  if (reassignBtn) reassignBtn.onclick = () => {
+    if (mpState.editing) actions.openReassignModal(mpState.editing);
+  };
 }
 
 // ============================================================
@@ -6553,6 +7272,7 @@ async function openDayModal(isoDate) {
 
   modal.className = 'modal modal--wide';
   modal.innerHTML = renderContent(`<div class="sc-day-modal-loading">Loading roster…</div>`);
+  overlay.hidden = false;
   overlay.classList.add('open');
 
   const closeBtn = modal.querySelector('.sc-day-modal-close');
@@ -6618,6 +7338,7 @@ async function openDayModal(isoDate) {
 
 function closeDayModal() {
   $('#modal-overlay').classList.remove('open');
+  $('#modal-overlay').hidden = true;
   $('#modal').className = 'modal';
 }
 
@@ -7398,14 +8119,24 @@ async function loadNotices() {
 
 function renderNoticesView() {
   const f = state.noticesFilter;
+  const cf = state.noticesCategoryFilter;
+  const q = state.noticesSearch.trim().toLowerCase();
   const list = state.notices.filter(n => {
-    if (f === 'published') return n.is_published;
-    if (f === 'draft') return !n.is_published;
+    if (f === 'published' && !n.is_published) return false;
+    if (f === 'draft' && n.is_published) return false;
+    if (cf !== 'all' && n.category !== cf) return false;
+    if (q) {
+      const title = (n.title || '').toLowerCase();
+      const body = (n.body || '').toLowerCase();
+      const titleOr = (n.title_or || '').toLowerCase();
+      const bodyOr = (n.body_or || '').toLowerCase();
+      if (!title.includes(q) && !body.includes(q) && !titleOr.includes(q) && !bodyOr.includes(q)) return false;
+    }
     return true;
   });
-  const catColors = { general: '#1D6FAE', duty: '#B7770D', event: '#27AE60', urgent: '#C0392B' };
-  const catBg    = { general: '#EBF5FB', duty: '#FFF3CD', event: '#F0FFF4', urgent: '#FFF5F5' };
-  const catLabel = { general: 'General', duty: 'Duty', event: 'Event', urgent: 'Urgent' };
+  const catColors = { general: '#1D6FAE', duty: '#B7770D', event: '#27AE60', urgent: '#C0392B', temple: '#8B5CF6', committee: '#0E7C7B' };
+  const catBg    = { general: '#EBF5FB', duty: '#FFF3CD', event: '#F0FFF4', urgent: '#FFF5F5', temple: '#F5F0FF', committee: '#E0F5F5' };
+  const catLabel = { general: 'General', duty: 'Duty', event: 'Event', urgent: 'Urgent', temple: 'Temple', committee: 'Management Committee' };
   const filterCounts = {
     all: state.notices.length,
     published: state.notices.filter(n => n.is_published).length,
@@ -7422,6 +8153,12 @@ function renderNoticesView() {
     const color = catColors[n.category] || catColors.general;
     const bg    = catBg[n.category]    || catBg.general;
     const cat   = catLabel[n.category] || n.category;
+    const repeatDaysLabel = Array.isArray(n.repeat_days)
+      ? n.repeat_days.map(day => NOTICE_REPEAT_DAYS.find(item => item.value === String(day))?.label).filter(Boolean).join(', ')
+      : '';
+    const repeatLabel = n.repeat_enabled
+      ? `${n.repeat_frequency === 'custom' ? 'Custom' : (n.repeat_frequency || 'daily').charAt(0).toUpperCase() + (n.repeat_frequency || 'daily').slice(1)}${repeatDaysLabel ? ` · ${repeatDaysLabel}` : ''}`
+      : '';
     return `
     <tr>
       <td><span class="status-pill" style="background:${bg};color:${color};font-size:11px;padding:2px 8px;border-radius:6px;font-weight:600">${esc(cat)}</span></td>
@@ -7433,6 +8170,7 @@ function renderNoticesView() {
       <td>
         ${n.is_published ? `<span class="status-pill status-approved" style="font-size:11px">Published</span>` : `<span class="status-pill" style="background:var(--bg2);color:var(--ink3);font-size:11px">Draft</span>`}
         ${n.pinned ? `<span class="status-pill" style="background:#FFF8E8;color:#B7770D;font-size:11px;margin-left:4px">Pinned</span>` : ''}
+        ${repeatLabel ? `<span class="status-pill" style="background:#E0F5F5;color:#0E7C7B;font-size:11px;margin-left:4px">Repeats: ${esc(repeatLabel)}</span>` : ''}
       </td>
       <td style="font-size:12px;color:var(--ink3)">${reads > 0 ? `<span style="color:var(--green)">${reads} read</span>` : '—'}</td>
       <td style="font-size:12px;color:var(--ink3)">${channels.join(', ') || '—'}</td>
@@ -7461,11 +8199,21 @@ function renderNoticesView() {
       <button class="filter-tab${f===k?' active':''}" data-notices-filter="${k}">
         ${k.charAt(0).toUpperCase()+k.slice(1)} (${filterCounts[k]})
       </button>`).join('')}
+    <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+      <select id="notices-category-filter" style="padding:6px 28px 6px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:var(--surface);cursor:pointer">
+        <option value="all" ${cf==='all'?'selected':''}>All Categories</option>
+        ${Object.entries(catLabel).map(([k,label]) => `<option value="${k}" ${cf===k?'selected':''}>${esc(label)}</option>`).join('')}
+      </select>
+      <div style="position:relative">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ink4)" stroke-width="2" style="position:absolute;left:10px;top:50%;transform:translateY(-50%)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="notices-search" placeholder="Search title or body…" value="${esc(state.noticesSearch)}" style="padding:6px 12px 6px 32px;border:1px solid var(--border);border-radius:8px;font-size:13px;width:200px" />
+      </div>
+    </div>
   </div>
   ${state.noticesLoading
     ? `<div class="loading-placeholder"><div class="spinner"></div></div>`
     : list.length === 0
-      ? `<div class="empty-state" style="padding:0 28px"><p>No notices yet. Click "+ New Notice" to create one.</p></div>`
+      ? `<div class="empty-state" style="padding:0 28px"><p>No notices match your filters. ${state.noticesSearch || state.noticesCategoryFilter !== 'all' ? 'Try clearing the search or category filter.' : 'Click "+ New Notice" to create one.'}</p></div>`
       : `<div class="data-table-wrap" style="padding:0 28px 40px"><table class="data-table">
           <thead><tr><th>Category</th><th>Notice</th><th>Target</th><th>Status</th><th>Reads</th><th>Channels</th><th>Published</th><th>Actions</th></tr></thead>
           <tbody>${rows}</tbody>
@@ -7484,10 +8232,24 @@ function attachNoticesHandlers() {
     btn.onclick = () => { state.noticesFilter = btn.dataset.noticesFilter; reRenderNotices(); };
   });
 
+  $('#notices-category-filter')?.addEventListener('change', e => {
+    state.noticesCategoryFilter = e.target.value; reRenderNotices();
+  });
+
+  let noticesSearchTimer;
+  $('#notices-search')?.addEventListener('input', e => {
+    clearTimeout(noticesSearchTimer);
+    noticesSearchTimer = setTimeout(() => {
+      state.noticesSearch = e.target.value;
+      reRenderNotices();
+    }, 250);
+  });
+
   $('#notices-create-btn')?.addEventListener('click', () => {
-    state.noticesForm = { title:'', body:'', category:'general', is_published:false, pinned:false,
+    state.noticesForm = { title:'', title_or:'', body:'', body_or:'', image_url:'', image_or_url:'', image_name:'', image_or_name:'', category:'general', is_published:false, pinned:false,
       target_type:'all', target_ids:[], channels:['push'], notify_when:'on_publish', notify_at_date:'', notify_at_time:'',
-      publish_mode:'now', scheduled_publish_date:'', scheduled_publish_time:'' };
+      publish_mode:'now', scheduled_publish_date:'', scheduled_publish_time:'', repeat_enabled:false,
+      repeat_frequency:'weekly', repeat_start_date:'', repeat_end_date:'', repeat_days:[] };
     state.noticesFormError = '';
     state.noticesSebayatSearch = '';
     state.noticesSebayatResults = [];
@@ -7501,7 +8263,8 @@ function attachNoticesHandlers() {
       const n = state.notices.find(x => x.id === btn.dataset.id);
       if (!n) return;
       state.noticesForm = {
-        id: n.id, title: n.title, body: n.body, category: n.category,
+        id: n.id, title: n.title, title_or: n.title_or || '', body: n.body, body_or: n.body_or || '',
+        image_url: n.image_url || '', image_or_url: n.image_or_url || '', image_name:'', image_or_name:'', category: n.category,
         is_published: n.is_published, pinned: n.pinned,
         target_type: n.target_type || 'all',
         target_ids: Array.isArray(n.target_ids) ? [...n.target_ids] : [],
@@ -7512,6 +8275,11 @@ function attachNoticesHandlers() {
         publish_mode: n.scheduled_publish_at ? 'scheduled' : (n.is_published ? 'now' : 'draft'),
         scheduled_publish_date: n.scheduled_publish_at ? n.scheduled_publish_at.split('T')[0] : '',
         scheduled_publish_time: n.scheduled_publish_at ? (n.scheduled_publish_at.split('T')[1]||'').slice(0,5) : '',
+        repeat_enabled: n.repeat_enabled === true,
+        repeat_frequency: n.repeat_frequency || 'weekly',
+        repeat_start_date: n.repeat_start_date || '',
+        repeat_end_date: n.repeat_end_date || '',
+        repeat_days: Array.isArray(n.repeat_days) ? [...n.repeat_days].map(String) : [],
       };
       state.noticesFormError = '';
       state.noticesSebayatSearch = '';
@@ -7590,22 +8358,64 @@ function attachNoticesHandlers() {
 }
 
 function reRenderNotices() {
+  const search = $('#notices-search');
+  const shouldRestoreSearch = search && document.activeElement === search;
+  const cursorPosition = shouldRestoreSearch ? search.selectionStart : null;
   const c = $('#view-container');
-  if (c && state.view === 'notices') { c.innerHTML = renderNoticesView(); attachNoticesHandlers(); }
+  if (c && state.view === 'notices') {
+    c.innerHTML = renderNoticesView();
+    attachNoticesHandlers();
+    if (shouldRestoreSearch) {
+      const nextSearch = $('#notices-search');
+      nextSearch?.focus();
+      if (cursorPosition !== null) nextSearch?.setSelectionRange(cursorPosition, cursorPosition);
+    }
+  }
 }
 
 // ── Notices Form Page ──
+
+function renderNoticeImageField(language, field, imageUrl, imageName) {
+  const isOdia = language === 'odia';
+  const label = isOdia ? 'Notice Image (Odia)' : 'Notice Image (English)';
+  const inputId = `nf-image-${field}`;
+  return `
+    <div class="notice-image-field">
+      <label>${label} <span style="color:var(--ink4);font-weight:400">(optional)</span></label>
+      <input id="${inputId}" class="nf-image-input" data-field="${field}" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden />
+      <label for="${inputId}" class="notice-image-dropzone">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+        <strong>${state.noticesFormImageUploading === field ? 'Uploading image…' : imageUrl ? 'Replace image' : `Click to upload image (${isOdia ? 'Odia' : 'English'})`}</strong>
+        <span>PNG, JPG, WebP or GIF (Max 5 MB)</span>
+        <span>Recommended size: 1200 × 630 px</span>
+      </label>
+      ${imageUrl ? `
+        <div class="notice-image-preview">
+          <img src="${esc(imageUrl)}" alt="${label}" />
+          <div class="notice-image-meta"><strong>${esc(imageName || 'Uploaded image')}</strong><span>Ready to publish</span></div>
+          <button type="button" class="nf-image-remove" data-field="${field}" aria-label="Remove image">×</button>
+        </div>` : ''}
+    </div>`;
+}
 
 function renderNoticesFormPage() {
   const f = state.noticesForm;
   if (!f) return '';
   const isEdit = !!f.id;
-  const cats = ['general','duty','event','urgent'];
-  const catLabel = { general:'General', duty:'Duty', event:'Event', urgent:'Urgent' };
-  const catColors = { general: '#1D6FAE', duty: '#B7770D', event: '#27AE60', urgent: '#C0392B' };
-  const catBg    = { general: '#EBF5FB', duty: '#FFF3CD', event: '#F0FFF4', urgent: '#FFF5F5' };
+  const cats = ['general','duty','event','urgent','temple','committee'];
+  const catLabel = { general:'General', duty:'Duty', event:'Event', urgent:'Urgent', temple:'Temple', committee:'Management Committee' };
+  const catColors = { general: '#1D6FAE', duty: '#B7770D', event: '#27AE60', urgent: '#C0392B', temple: '#8B5CF6', committee: '#0E7C7B' };
+  const catBg    = { general: '#EBF5FB', duty: '#FFF3CD', event: '#F0FFF4', urgent: '#FFF5F5', temple: '#F5F0FF', committee: '#E0F5F5' };
   const channels = ['sms','whatsapp','push'];
-  const groupCodes = ['pratihari','gochhikar'];
+  const groupCodes = [
+    { code: 'pratihari', label: 'Pratihari' },
+    { code: 'gochhikar', label: 'Gochhikar' },
+    { code: 'bhagari', label: 'Bhagari' },
+    { code: 'baristha_bhai_pua', label: 'Barista Bhai Pua' },
+    { code: 'bhai_pua', label: 'Bhai Pua' },
+    { code: 'palia', label: 'Palia' },
+  ];
+  const repeatDays = Array.isArray(f.repeat_days) ? f.repeat_days.map(String) : [];
 
   function chip(label, active) {
     return `border-color:${active?'var(--teal)':'var(--border)'};background:${active?'#EBF7F4':'transparent'};color:${active?'var(--teal)':'var(--ink2)'}`;
@@ -7619,7 +8429,7 @@ function renderNoticesFormPage() {
       </button>
       <div>
         <h2 class="view-title" style="margin:0">${isEdit ? 'Edit Notice' : 'New Notice'}</h2>
-        <p class="view-sub" style="margin:0">${isEdit ? 'Update the details below' : 'Fill in the details below'}</p>
+        <p class="view-sub" style="margin:0">${isEdit ? 'Update the details below' : 'Create and publish a notice in English and/or Odia'}</p>
       </div>
     </div>
   </div>
@@ -7629,60 +8439,82 @@ function renderNoticesFormPage() {
     <!-- Left column: content + targeting -->
     <div style="display:flex;flex-direction:column;gap:20px">
 
-      <div class="card" style="padding:24px">
-        <h4 style="margin:0 0 16px;font-size:14px;font-weight:600;color:var(--ink2);text-transform:uppercase;letter-spacing:.04em">Content</h4>
-        ${state.noticesFormError ? `<div class="alert alert-error" style="margin-bottom:16px">${esc(state.noticesFormError)}</div>` : ''}
-        <div class="field">
-          <label>Title (English) *</label>
-          <input id="nf-title" value="${esc(f.title||'')}" placeholder="Notice headline" />
+      ${state.noticesFormError ? `<div class="alert alert-error" style="margin-bottom:0">${esc(state.noticesFormError)}</div>` : ''}
+
+      <div class="card notice-language-card notice-language-english">
+        <div class="notice-language-header">
+          <span class="notice-language-badge">EN</span>
+          <div><h4>English Notice</h4><p>Add notice details in English</p></div>
         </div>
-        <div class="field">
-          <label>Title (Odia) <span style="color:var(--ink4);font-weight:400">(optional)</span></label>
-          <input id="nf-title-or" value="${esc(f.title_or||'')}" placeholder="ଓଡ଼ିଆ ଶୀର୍ଷକ" />
-        </div>
-        <div class="field">
-          <label>Body (English) *</label>
-          <textarea id="nf-body" rows="5" placeholder="Full notice content..." style="resize:vertical">${esc(f.body||'')}</textarea>
-        </div>
-        <div class="field" style="margin:0">
-          <label>Body (Odia) <span style="color:var(--ink4);font-weight:400">(optional)</span></label>
-          <textarea id="nf-body-or" rows="5" placeholder="ଓଡ଼ିଆ ବିଷୟବସ୍ତୁ..." style="resize:vertical">${esc(f.body_or||'')}</textarea>
+        <div class="notice-language-grid">
+          <div>
+            <div class="field">
+              <label>Title (English) *</label>
+              <input id="nf-title" value="${esc(f.title||'')}" placeholder="Notice headline in English..." />
+            </div>
+            <div class="field" style="margin:0">
+              <label>Body (English) *</label>
+              <textarea id="nf-body" rows="6" placeholder="Full notice content in English..." style="resize:vertical">${esc(f.body||'')}</textarea>
+            </div>
+          </div>
+          ${renderNoticeImageField('english', 'image_url', f.image_url, f.image_name)}
         </div>
       </div>
 
-      <div class="card" style="padding:24px">
-        <h4 style="margin:0 0 16px;font-size:14px;font-weight:600;color:var(--ink2);text-transform:uppercase;letter-spacing:.04em">Category</h4>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div class="card notice-language-card notice-language-odia">
+        <div class="notice-language-header">
+          <span class="notice-language-badge">ଓଡ଼ିଆ</span>
+          <div><h4>Odia Notice</h4><p>Add notice details in Odia</p></div>
+        </div>
+        <div class="notice-language-grid">
+          <div>
+            <div class="field">
+              <label>Title (Odia) <span style="color:var(--ink4);font-weight:400">(optional)</span></label>
+              <input id="nf-title-or" value="${esc(f.title_or||'')}" placeholder="ଓଡ଼ିଆ ଶୀର୍ଷକ ଲେଖନ୍ତୁ..." />
+            </div>
+            <div class="field" style="margin:0">
+              <label>Body (Odia) <span style="color:var(--ink4);font-weight:400">(optional)</span></label>
+              <textarea id="nf-body-or" rows="6" placeholder="ଓଡ଼ିଆ ବିଷୟବସ୍ତୁ ଲେଖନ୍ତୁ..." style="resize:vertical">${esc(f.body_or||'')}</textarea>
+            </div>
+          </div>
+          ${renderNoticeImageField('odia', 'image_or_url', f.image_or_url, f.image_or_name)}
+        </div>
+      </div>
+
+      <div class="card notice-meta-card">
+        <div class="notice-meta-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M20.59 13.41 11 3.83V3H4v7h.83l9.58 9.59a2 2 0 0 0 2.83 0l3.35-3.35a2 2 0 0 0 0-2.83ZM7 8.5A1.5 1.5 0 1 1 7 5.5a1.5 1.5 0 0 1 0 3Z"/></svg>Category</div>
+        <div class="notice-meta-options">
           ${cats.map(k => `
             <button type="button" class="btn btn-ghost notices-cat-btn" data-cat="${k}"
-              style="${chip(catLabel[k], f.category===k)};padding:8px 16px;border-radius:8px;display:flex;align-items:center;gap:6px">
+              style="${chip(catLabel[k], f.category===k)};padding:8px 14px;border-radius:8px;display:flex;align-items:center;gap:6px">
               <span style="width:8px;height:8px;border-radius:50%;background:${catColors[k]};display:inline-block"></span>
               ${catLabel[k]}
             </button>`).join('')}
         </div>
       </div>
 
-      <div class="card" style="padding:24px">
-        <h4 style="margin:0 0 16px;font-size:14px;font-weight:600;color:var(--ink2);text-transform:uppercase;letter-spacing:.04em">Target Audience</h4>
-        <div style="display:flex;gap:10px;margin-bottom:16px">
+      <div class="card notice-meta-card" style="align-items:flex-start">
+        <div class="notice-meta-title" style="padding-top:8px"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3Zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3Zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5C15 14.17 10.33 13 8 13Zm8 0c-.29 0-.62.02-.97.05 1.48 1.06 2.47 2.5 2.47 4.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5Z"/></svg>Target Audience</div>
+        <div style="flex:1">
+          <div class="notice-meta-options" style="margin-bottom:12px">
           ${['all','group','individual'].map(t => `
             <button type="button" class="btn btn-ghost notices-target-btn" data-target="${t}"
               style="${chip(t, f.target_type===t)};padding:8px 16px;border-radius:8px">
               ${t==='all'?'All Members':t==='group'?'By Group':'Specific Members'}
             </button>`).join('')}
         </div>
-        ${f.target_type === 'group' ? `
+          ${f.target_type === 'group' ? `
           <div style="display:flex;gap:10px;flex-wrap:wrap">
             ${groupCodes.map(g => {
               const tids = Array.isArray(f.target_ids) ? f.target_ids : [];
-              const checked = tids.includes(g);
+              const checked = tids.includes(g.code);
               return `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border-radius:8px;border:1px solid ${checked?'var(--teal)':'var(--border)'};background:${checked?'#EBF7F4':''}">
-                <input type="checkbox" class="nf-group-check" value="${g}" ${checked?'checked':''} style="accent-color:var(--teal);width:15px;height:15px"/>
-                <span style="font-weight:500">${g.charAt(0).toUpperCase()+g.slice(1)}</span>
+                <input type="checkbox" class="nf-group-check" value="${g.code}" ${checked?'checked':''} style="accent-color:var(--teal);width:15px;height:15px"/>
+                <span style="font-weight:500">${g.label}</span>
               </label>`;
             }).join('')}
           </div>` : ''}
-        ${f.target_type === 'individual' ? `
+          ${f.target_type === 'individual' ? `
           <div>
             <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:10px;background:var(--surface)">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -7708,6 +8540,7 @@ function renderNoticesFormPage() {
                   </span>`).join('')}
               </div>` : `<p style="font-size:13px;color:var(--ink4);margin:0">No members selected yet.</p>`}
           </div>` : ''}
+        </div>
       </div>
 
     </div>
@@ -7740,6 +8573,39 @@ function renderNoticesFormPage() {
             <div class="field" style="margin:0">
               <label style="font-size:12px">Publish time</label>
               <input id="nf-publish-time" type="time" value="${esc(f.scheduled_publish_time||'09:00')}" />
+            </div>
+            <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:2px">
+              <label style="display:flex;align-items:center;gap:9px;cursor:pointer;font-size:13px;font-weight:600;color:var(--ink2)">
+                <input type="checkbox" id="nf-repeat-enabled" ${f.repeat_enabled?'checked':''} style="accent-color:var(--teal);width:16px;height:16px" />
+                Repeat this notice
+              </label>
+              <div style="font-size:11px;color:var(--ink4);margin:4px 0 12px 25px">Publish it automatically on a recurring schedule.</div>
+              ${f.repeat_enabled ? `
+                <div style="display:flex;flex-direction:column;gap:10px">
+                  <div class="field" style="margin:0">
+                    <label style="font-size:12px">Repeat</label>
+                    <select id="nf-repeat-frequency">
+                      ${[
+                        ['daily','Daily'], ['weekly','Weekly'], ['monthly','Monthly'], ['custom','Custom'],
+                      ].map(([value,label]) => `<option value="${value}" ${f.repeat_frequency===value?'selected':''}>${label}</option>`).join('')}
+                    </select>
+                  </div>
+                  <div class="field" style="margin:0">
+                    <label style="font-size:12px">Start date *</label>
+                    <input id="nf-repeat-start-date" type="date" value="${esc(f.repeat_start_date || f.scheduled_publish_date || '')}" />
+                  </div>
+                  <div class="field" style="margin:0">
+                    <label style="font-size:12px">End date <span style="color:var(--ink4);font-weight:400">(optional)</span></label>
+                    <input id="nf-repeat-end-date" type="date" value="${esc(f.repeat_end_date||'')}" />
+                  </div>
+                  ${['weekly','custom'].includes(f.repeat_frequency) ? `
+                    <div>
+                      <label style="font-size:12px;font-weight:600;color:var(--ink3);display:block;margin-bottom:7px">Applicable days *</label>
+                      <div style="display:flex;gap:5px;flex-wrap:wrap">
+                        ${NOTICE_REPEAT_DAYS.map(day => `<button type="button" class="btn btn-ghost btn-sm nf-repeat-day-btn" data-day="${day.value}" style="${chip(day.label, repeatDays.includes(day.value))};padding:6px 8px;min-width:38px;border-radius:7px">${day.label}</button>`).join('')}
+                      </div>
+                    </div>` : ''}
+                </div>` : ''}
             </div>
           </div>` : ''}
         <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-top:1px solid var(--border)">
@@ -7866,6 +8732,57 @@ function attachNoticesFormHandlers() {
     };
   });
 
+  $$('.nf-image-input').forEach(input => {
+    input.addEventListener('change', async () => {
+      const file = input.files?.[0];
+      const field = input.dataset.field;
+      if (!file || !field || !state.noticesForm) return;
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+      if (!allowedTypes.includes(file.type)) {
+        state.noticesFormError = 'Please choose a JPG, PNG, WebP, or GIF image.';
+        reRenderFormPage();
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        state.noticesFormError = 'Each notice image must be 5 MB or smaller.';
+        reRenderFormPage();
+        return;
+      }
+
+      state.noticesFormError = '';
+      state.noticesFormImageUploading = field;
+      reRenderFormPage();
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path = `${field}/${Date.now()}_${safeName}`;
+      const { error: uploadError } = await db.storage.from('notice-images').upload(path, file, {
+        contentType: file.type,
+        upsert: false,
+      });
+      if (uploadError) {
+        state.noticesFormImageUploading = null;
+        state.noticesFormError = uploadError.message || 'Image upload failed.';
+        reRenderFormPage();
+        return;
+      }
+      const { data: urlData } = db.storage.from('notice-images').getPublicUrl(path);
+      state.noticesForm[field] = urlData.publicUrl;
+      state.noticesForm[field === 'image_url' ? 'image_name' : 'image_or_name'] = file.name;
+      state.noticesFormImageUploading = null;
+      reRenderFormPage();
+    });
+  });
+
+  $$('.nf-image-remove').forEach(btn => {
+    btn.onclick = () => {
+      if (!state.noticesForm) return;
+      const field = btn.dataset.field;
+      if (!field) return;
+      state.noticesForm[field] = '';
+      state.noticesForm[field === 'image_url' ? 'image_name' : 'image_or_name'] = '';
+      reRenderFormPage();
+    };
+  });
+
   $$('.nf-channel-btn').forEach(btn => {
     btn.onclick = () => {
       if (!state.noticesForm) return;
@@ -7887,6 +8804,32 @@ function attachNoticesFormHandlers() {
 
   $('#nf-publish-date')?.addEventListener('change', (e) => { if (state.noticesForm) state.noticesForm.scheduled_publish_date = e.target.value; });
   $('#nf-publish-time')?.addEventListener('change', (e) => { if (state.noticesForm) state.noticesForm.scheduled_publish_time = e.target.value; });
+  $('#nf-repeat-enabled')?.addEventListener('change', (e) => {
+    if (!state.noticesForm) return;
+    state.noticesForm.repeat_enabled = e.target.checked;
+    if (e.target.checked && !state.noticesForm.repeat_start_date) {
+      state.noticesForm.repeat_start_date = state.noticesForm.scheduled_publish_date || '';
+    }
+    reRenderFormPage();
+  });
+  $('#nf-repeat-frequency')?.addEventListener('change', (e) => {
+    if (!state.noticesForm) return;
+    state.noticesForm.repeat_frequency = e.target.value;
+    if (!['weekly','custom'].includes(e.target.value)) state.noticesForm.repeat_days = [];
+    reRenderFormPage();
+  });
+  $('#nf-repeat-start-date')?.addEventListener('change', (e) => { if (state.noticesForm) state.noticesForm.repeat_start_date = e.target.value; });
+  $('#nf-repeat-end-date')?.addEventListener('change', (e) => { if (state.noticesForm) state.noticesForm.repeat_end_date = e.target.value; });
+  document.querySelectorAll('.nf-repeat-day-btn').forEach(btn => {
+    btn.onclick = () => {
+      if (!state.noticesForm) return;
+      const days = [...(state.noticesForm.repeat_days || [])].map(String);
+      const index = days.indexOf(String(btn.dataset.day));
+      if (index === -1) days.push(String(btn.dataset.day)); else days.splice(index, 1);
+      state.noticesForm.repeat_days = days;
+      reRenderFormPage();
+    };
+  });
 
   $('#nf-notify-date')?.addEventListener('change', (e) => { if (state.noticesForm) state.noticesForm.notify_at_date = e.target.value; });
   $('#nf-notify-time')?.addEventListener('change', (e) => { if (state.noticesForm) state.noticesForm.notify_at_time = e.target.value; });
@@ -7909,6 +8852,11 @@ function attachNoticesFormHandlers() {
       const pubTime = $('#nf-publish-time')?.value || f.scheduled_publish_time || '09:00';
       const notifyDate = $('#nf-notify-date')?.value || '';
       const notifyTime = $('#nf-notify-time')?.value || '09:00';
+      const repeatEnabled = publishMode === 'scheduled' && $('#nf-repeat-enabled')?.checked === true;
+      const repeatFrequency = $('#nf-repeat-frequency')?.value || f.repeat_frequency || 'weekly';
+      const repeatStartDate = $('#nf-repeat-start-date')?.value || f.repeat_start_date || pubDate;
+      const repeatEndDate = $('#nf-repeat-end-date')?.value || f.repeat_end_date || '';
+      const repeatDays = [...(f.repeat_days || [])].map(String);
 
       // Sync captured values back to state so re-renders show them
       f.title = title;
@@ -7927,6 +8875,22 @@ function attachNoticesFormHandlers() {
       if (f.target_type === 'group' && (!f.target_ids || f.target_ids.length === 0)) { showErr('Select at least one group.'); return; }
       if (f.target_type === 'individual' && state.noticesSelectedSebayats.length === 0) { showErr('Select at least one member.'); return; }
       if (publishMode === 'scheduled' && !pubDate) { showErr('Please set a publish date for scheduled publishing.'); return; }
+      if (publishMode === 'scheduled') {
+        const scheduledDate = new Date(`${pubDate}T${pubTime}:00`);
+        if (Number.isNaN(scheduledDate.getTime()) || scheduledDate.getTime() <= Date.now()) {
+          showErr('Scheduled publish time must be in the future.');
+          return;
+        }
+      }
+      if (repeatEnabled) {
+        if (!repeatStartDate) { showErr('Please set a recurrence start date.'); return; }
+        if (repeatEndDate && repeatEndDate < repeatStartDate) { showErr('Recurrence end date must be on or after the start date.'); return; }
+        if (repeatStartDate < pubDate) { showErr('Recurrence start date cannot be before the first publish date.'); return; }
+        if (['weekly','custom'].includes(repeatFrequency) && repeatDays.length === 0) {
+          showErr('Select at least one applicable day.');
+          return;
+        }
+      }
 
       // Disable button immediately — no re-render to avoid losing DOM
       nfSaveBtn.disabled = true;
@@ -7934,20 +8898,31 @@ function attachNoticesFormHandlers() {
       state.noticesFormError = '';
       state.noticesFormSaving = true;
 
-      const scheduledPublishAt = publishMode === 'scheduled' && pubDate ? `${pubDate}T${pubTime}:00` : null;
+      const scheduledPublishAt = publishMode === 'scheduled' && pubDate
+        ? new Date(`${pubDate}T${pubTime}:00`).toISOString()
+        : null;
       const isPublishedNow = publishMode === 'now';
+      const publishedAt = isPublishedNow ? new Date().toISOString() : null;
       const notifyAt = f.notify_when === 'custom' && notifyDate ? `${notifyDate}T${notifyTime}:00` : null;
 
       const payload = {
         title, title_or, body, body_or,
+        image_url: f.image_url || null,
+        image_or_url: f.image_or_url || null,
         category: f.category || 'general',
         is_published: isPublishedNow,
+        published_at: publishedAt,
         pinned: nowPinned,
         target_type: f.target_type || 'all',
         target_ids: f.target_ids || [],
         channels: f.channels || [],
         notify_at: notifyAt,
         scheduled_publish_at: scheduledPublishAt,
+        repeat_enabled: repeatEnabled,
+        repeat_frequency: repeatEnabled ? repeatFrequency : null,
+        repeat_start_date: repeatEnabled ? repeatStartDate : null,
+        repeat_end_date: repeatEnabled && repeatEndDate ? repeatEndDate : null,
+        repeat_days: repeatEnabled && ['weekly','custom'].includes(repeatFrequency) ? repeatDays : [],
         updated_at: new Date().toISOString(),
       };
 
@@ -7955,7 +8930,6 @@ function attachNoticesFormHandlers() {
       if (f.id) {
         ({ error } = await db.from('notices').update(payload).eq('id', f.id));
       } else {
-        if (isPublishedNow) payload.published_at = new Date().toISOString();
         ({ error } = await db.from('notices').insert({ ...payload, created_by: state.user.id }));
       }
 
@@ -7971,7 +8945,30 @@ function attachNoticesFormHandlers() {
   }
 }
 
+function syncNoticesFormInputs() {
+  const f = state.noticesForm;
+  if (!f) return;
+  f.title = $('#nf-title')?.value ?? f.title;
+  f.title_or = $('#nf-title-or')?.value ?? f.title_or;
+  f.body = $('#nf-body')?.value ?? f.body;
+  f.body_or = $('#nf-body-or')?.value ?? f.body_or;
+  f.image_url = f.image_url || '';
+  f.image_or_url = f.image_or_url || '';
+  f.image_name = f.image_name || '';
+  f.image_or_name = f.image_or_name || '';
+  f.pinned = $('#nf-pinned')?.checked ?? f.pinned;
+  f.scheduled_publish_date = $('#nf-publish-date')?.value ?? f.scheduled_publish_date;
+  f.scheduled_publish_time = $('#nf-publish-time')?.value ?? f.scheduled_publish_time;
+  f.repeat_enabled = $('#nf-repeat-enabled')?.checked ?? f.repeat_enabled;
+  f.repeat_frequency = $('#nf-repeat-frequency')?.value ?? f.repeat_frequency;
+  f.repeat_start_date = $('#nf-repeat-start-date')?.value ?? f.repeat_start_date;
+  f.repeat_end_date = $('#nf-repeat-end-date')?.value ?? f.repeat_end_date;
+  f.notify_at_date = $('#nf-notify-date')?.value ?? f.notify_at_date;
+  f.notify_at_time = $('#nf-notify-time')?.value ?? f.notify_at_time;
+}
+
 function reRenderFormPage() {
+  syncNoticesFormInputs();
   const c = $('#view-container');
   if (c && state.view === 'notices_form') { c.innerHTML = renderNoticesFormPage(); attachNoticesFormHandlers(); }
 }
@@ -8192,13 +9189,24 @@ function attachAppTypesHandlers() {
   });
 
   $$('.app-type-toggle-btn').forEach(btn => {
-    btn.onclick = async () => {
+    btn.onclick = () => {
       const isActive = btn.dataset.active === 'true';
-      await db.from('application_types').update({ is_active: !isActive, updated_at: new Date().toISOString() }).eq('id', btn.dataset.id);
-      await loadAppTypes();
-      const c = $('#view-container');
-      if (c && state.view === 'app_types') { c.innerHTML = renderAppTypesView(); attachAppTypesHandlers(); }
-      showToast(`Type ${isActive?'deactivated':'activated'}.`, 'success');
+      const type = state.appTypes.find(x => x.id === btn.dataset.id);
+      if (!type) return;
+      showConfirm({
+        title: `${isActive ? 'Deactivate' : 'Activate'} Application Type`,
+        message: `Are you sure you want to ${isActive ? 'deactivate' : 'activate'} this application type?`,
+        confirmLabel: isActive ? 'Deactivate' : 'Activate',
+        danger: isActive,
+        onConfirm: async () => {
+          const { error } = await db.from('application_types').update({ is_active: !isActive, updated_at: new Date().toISOString() }).eq('id', btn.dataset.id);
+          if (error) { showToast('Could not update application type.', 'error'); return; }
+          await loadAppTypes();
+          const c = $('#view-container');
+          if (c && state.view === 'app_types') { c.innerHTML = renderAppTypesView(); attachAppTypesHandlers(); }
+          showToast(`Type ${isActive?'deactivated':'activated'}.`, 'success');
+        },
+      });
     };
   });
 }
@@ -8344,16 +9352,36 @@ function updateAppsBadgeCounts() {
   });
 }
 
+function renderManageApplicationsResults() {
+  const f = state.manageAppsFilter;
+  const q = state.manageAppsSearch.toLowerCase();
+  const all = state.manageApps;
+  let list = f === 'all' ? all : all.filter(a => a.status === f);
+  if (q) list = list.filter(a => (a.sebayat?.full_name||'').toLowerCase().includes(q) || (a.title||'').toLowerCase().includes(q) || (a.app_type?.name||'').toLowerCase().includes(q));
+
+  return list.length === 0 ? `
+      <div style="text-align:center;padding:60px 40px;color:var(--ink4)">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 12px;display:block;opacity:0.4"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <div style="font-weight:600;margin-bottom:6px">No applications found</div>
+        <div style="font-size:13px">Try a different filter or wait for sebayats to submit.</div>
+      </div>
+    ` : `
+      <div style="padding:0 24px">
+        <table class="data-table" style="width:100%">
+          <thead><tr><th>Applicant</th><th>Type</th><th>Title</th><th>Priority</th><th>Status</th><th>Submitted</th><th></th></tr></thead>
+          <tbody>${list.map(a => renderAppRow(a)).join('')}</tbody>
+        </table>
+      </div>
+    `;
+}
+
 function renderManageApplicationsView() {
   if (state.manageAppsDetail) return renderApplicationDetailView();
   if (state.manageAppsLoading && !state.manageAppsLoaded) {
     return `<div style="padding:60px;text-align:center;color:var(--ink4)">Loading applications…</div>`;
   }
   const f = state.manageAppsFilter;
-  const q = state.manageAppsSearch.toLowerCase();
   const all = state.manageApps;
-  let list = f === 'all' ? all : all.filter(a => a.status === f);
-  if (q) list = list.filter(a => (a.sebayat?.full_name||'').toLowerCase().includes(q) || (a.title||'').toLowerCase().includes(q) || (a.app_type?.name||'').toLowerCase().includes(q));
   const counts = { all:all.length, pending:all.filter(a=>a.status==='pending').length, under_review:all.filter(a=>a.status==='under_review').length, approved:all.filter(a=>a.status==='approved').length, rejected:all.filter(a=>a.status==='rejected').length, more_info_required:all.filter(a=>a.status==='more_info_required').length };
   const filterBtns = Object.entries({ all:'All', pending:'Pending', under_review:'Under Review', approved:'Approved', rejected:'Rejected', more_info_required:'More Info Required' }).map(([key,label]) =>
     `<button class="btn btn-sm ${f===key?'btn-primary':'btn-ghost'}" onclick="state.manageAppsFilter='${key}';reRenderManageApps()">${label}${counts[key]>0?` (${counts[key]})`:''}</button>`
@@ -8375,20 +9403,9 @@ function renderManageApplicationsView() {
         <input type="text" id="manage-apps-search" placeholder="Search by name or title…" value="${esc(state.manageAppsSearch)}" style="padding:7px 12px 7px 32px;border:1px solid var(--border);border-radius:8px;font-size:13px;width:220px" />
       </div>
     </div>
-    ${list.length === 0 ? `
-      <div style="text-align:center;padding:60px 40px;color:var(--ink4)">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 12px;display:block;opacity:0.4"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        <div style="font-weight:600;margin-bottom:6px">No applications found</div>
-        <div style="font-size:13px">Try a different filter or wait for sebayats to submit.</div>
-      </div>
-    ` : `
-      <div style="padding:0 24px">
-        <table class="data-table" style="width:100%">
-          <thead><tr><th>Applicant</th><th>Type</th><th>Title</th><th>Priority</th><th>Status</th><th>Submitted</th><th></th></tr></thead>
-          <tbody>${list.map(a => renderAppRow(a)).join('')}</tbody>
-        </table>
-      </div>
-    `}
+    <div id="manage-apps-results">
+      ${renderManageApplicationsResults()}
+    </div>
   `;
 }
 
@@ -8444,7 +9461,7 @@ function renderApplicationDetailView() {
           <div style="background:var(--surface2);border-radius:10px;padding:14px">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
               ${s?.photo_url ? `<img src="${esc(s.photo_url)}" style="width:40px;height:40px;border-radius:50%;object-fit:cover" />` : `<div style="width:40px;height:40px;border-radius:50%;background:var(--saffron-light);color:var(--saffron);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px">${initials}</div>`}
-              <div><div style="font-weight:600;font-size:14px">${esc(s?.full_name||'Unknown')}</div><div style="font-size:12px;color:var(--ink4)">${esc(s?.phone||'')}</div></div>
+              <div><div style="font-weight:600;font-size:14px;cursor:pointer;color:var(--saffron);text-decoration:underline" id="app-sebayat-name" data-sebayat-id="${esc(s?.id||'')}">${esc(s?.full_name||'Unknown')}</div><div style="font-size:12px;color:var(--ink4)">${esc(s?.phone||'')}</div></div>
             </div>
             ${s?.palia_number?`<div style="font-size:12px;color:var(--ink3)">Palia: ${esc(String(s.palia_number))} · ${esc(s?.seba_name||'')}</div>`:''}
             ${s?.registration_no?`<div style="font-size:12px;color:var(--ink4)">Reg: ${esc(s.registration_no)}</div>`:''}
@@ -8575,13 +9592,7 @@ function reRenderManageApps() {
   if (c && state.view === 'manage_applications') { c.innerHTML = renderManageApplicationsView(); attachManageApplicationsHandlers(); }
 }
 
-function attachManageApplicationsHandlers() {
-  if (!state.manageAppsLoaded && !state.manageAppsLoading) {
-    loadManageApplications().then(() => reRenderManageApps());
-    return;
-  }
-  if (state.manageAppsDetail) { attachApplicationDetailHandlers(); return; }
-
+function attachManageApplicationRowHandlers() {
   $$('.app-row, .app-view-btn, .clickable-row').forEach(el => {
     el.onclick = e => {
       e.stopPropagation();
@@ -8589,10 +9600,23 @@ function attachManageApplicationsHandlers() {
       if (id) openApplicationDetail(id);
     };
   });
+}
+
+function attachManageApplicationsHandlers() {
+  if (!state.manageAppsLoaded && !state.manageAppsLoading) {
+    loadManageApplications().then(() => reRenderManageApps());
+    return;
+  }
+  if (state.manageAppsDetail) { attachApplicationDetailHandlers(); return; }
+
+  attachManageApplicationRowHandlers();
 
   $('#manage-apps-search')?.addEventListener('input', e => {
     state.manageAppsSearch = e.target.value;
-    reRenderManageApps();
+    const results = $('#manage-apps-results');
+    if (!results) return;
+    results.innerHTML = renderManageApplicationsResults();
+    attachManageApplicationRowHandlers();
   });
 }
 
@@ -8600,6 +9624,22 @@ function attachApplicationDetailHandlers() {
   $('#app-detail-back-btn')?.addEventListener('click', () => {
     state.manageAppsDetail = null;
     reRenderManageApps();
+  });
+
+  $('#app-sebayat-name')?.addEventListener('click', async () => {
+    const sebayatId = $('#app-sebayat-name').dataset.sebayatId;
+    if (!sebayatId) return;
+    const existing = state.sebayats.find(x => x.id === sebayatId);
+    if (existing) {
+      state.currentSebayat = existing;
+      await openDrawer(existing);
+    } else {
+      const { data } = await db.from('sebayats').select('*').eq('id', sebayatId).maybeSingle();
+      if (data) {
+        state.currentSebayat = data;
+        await openDrawer(data);
+      }
+    }
   });
 
   // Load signed URLs for private attachments and wire up click handlers
@@ -9299,7 +10339,7 @@ function renderEventImagesView(container) {
 function openEventImageModal(existing) {
   const modalTitle = existing ? 'Edit Image' : 'Add Image';
   showModal(`
-    <div style="padding:24px;min-width:360px;max-width:480px">
+    <div class="content-modal">
       <h2 style="margin:0 0 20px;font-size:18px;font-weight:700;color:#2D1810">${modalTitle}</h2>
 
       <div id="ei-modal-preview" style="margin-bottom:16px;border-radius:10px;overflow:hidden;border:2px dashed #E8D5C4;height:180px;background:#FFF8F0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;transition:border-color .15s" onclick="$('#ei-file-input').click()">
@@ -9330,7 +10370,7 @@ function openEventImageModal(existing) {
         <input id="ei-subtitle-or" type="text" placeholder="ଓଡ଼ିଆ ଉପ-ଶୀର୍ଷକ" value="${existing ? esc(existing.subtitle_or || '') : ''}" style="width:100%;box-sizing:border-box" />
       </div>
 
-      <div style="display:flex;gap:10px;margin-top:20px">
+      <div class="content-modal-actions">
         <button class="btn btn-ghost" id="ei-modal-cancel">Cancel</button>
         <button class="btn btn-primary" id="ei-modal-save" style="flex:1">${existing ? 'Save Changes' : 'Add Image'}</button>
       </div>
@@ -9493,6 +10533,311 @@ function attachEventImagesHandlers() {
           const c = $('#view-container');
           if (c && state.view === 'event_images') renderEventImagesView(c);
           showToast('Image deleted.', 'success');
+        },
+      });
+    };
+  });
+}
+
+/* ============================================================
+   DOCUMENTS VIEW
+   ============================================================ */
+
+async function loadDocuments() {
+  state.documentsLoading = true;
+  const { data } = await db.from('documents').select('*').order('display_order', { ascending: true });
+  state.documents = data || [];
+  state.documentsLoading = false;
+  state.documentsLoaded = true;
+}
+
+const DOC_CATEGORIES = [
+  { key: 'ror',      label: 'ROR' },
+  { key: 'temple',   label: 'Temple' },
+  { key: 'legal',    label: 'Legal' },
+  { key: 'other',    label: 'Other' },
+];
+
+function renderDocumentsView(container) {
+  if (!state.documentsLoaded && !state.documentsLoading) {
+    loadDocuments().then(() => {
+      if ($('#view-container') && state.view === 'documents') renderDocumentsView($('#view-container'));
+    });
+  }
+  if (state.documentsLoading && !state.documentsLoaded) {
+    container.innerHTML = `<div class="page"><div style="padding:40px;text-align:center;color:#9B8578">Loading…</div></div>`;
+    return;
+  }
+  const docs = state.documents;
+  container.innerHTML = `
+    <div class="page">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Documents</h1>
+          <p class="page-sub">Upload and manage important PDF documents visible to enrolled Sebayats.</p>
+        </div>
+        <button class="btn btn-primary" id="doc-add-btn">+ Add Document</button>
+      </div>
+      ${docs.length === 0 ? `
+        <div class="empty" style="padding:60px 0">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#D4A843" stroke-width="1.5" style="margin-bottom:16px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <p style="margin:0 0 4px;font-weight:600;color:#2D1810">No documents yet</p>
+          <p style="margin:0;font-size:13px;color:#9B8578">Upload your first PDF document to make it available to Sebayats.</p>
+        </div>
+      ` : `
+        <div style="display:grid;gap:12px">
+          ${docs.map((doc, idx) => `
+            <div class="doc-card" data-id="${esc(doc.id)}" style="display:flex;align-items:center;gap:16px;background:#fff;border:1px solid #E8D5C4;border-radius:14px;padding:12px 16px;${!doc.is_active ? 'opacity:0.55;' : ''}">
+              <div style="width:48px;height:48px;border-radius:10px;background:#FFF5F0;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#E8732A" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              </div>
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:600;font-size:14px;color:#2D1810;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(doc.title)}</div>
+                <div style="font-size:12px;color:#9B8578;margin-top:2px">${esc(DOC_CATEGORIES.find(c => c.key === doc.category)?.label || doc.category)} · ${doc.file_size > 0 ? (doc.file_size > 1048576 ? (doc.file_size/1048576).toFixed(1)+' MB' : Math.ceil(doc.file_size/1024)+' KB') : '—'}</div>
+                <div style="font-size:11px;margin-top:4px;color:${doc.is_active ? '#27AE60' : '#9B8578'};font-weight:500">${doc.is_active ? 'Visible' : 'Hidden'}</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+                <a href="${esc(doc.file_url)}" target="_blank" rel="noopener" class="icon-btn" title="Open PDF" style="text-decoration:none;display:flex;align-items:center;justify-content:center">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1D6FAE" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                </a>
+                <button class="icon-btn doc-move-up" data-id="${esc(doc.id)}" title="Move up" ${idx === 0 ? 'disabled' : ''}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+                </button>
+                <button class="icon-btn doc-move-down" data-id="${esc(doc.id)}" title="Move down" ${idx === docs.length - 1 ? 'disabled' : ''}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                <button class="icon-btn doc-toggle" data-id="${esc(doc.id)}" data-active="${doc.is_active}" title="${doc.is_active ? 'Hide' : 'Show'}">
+                  ${doc.is_active
+                    ? `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#27AE60" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`
+                    : `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9B8578" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`
+                  }
+                </button>
+                <button class="icon-btn doc-edit" data-id="${esc(doc.id)}" title="Edit">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#E8732A" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                <button class="icon-btn doc-delete" data-id="${esc(doc.id)}" title="Delete" style="color:#C0392B">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C0392B" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                </button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `}
+    </div>
+  `;
+  attachDocumentsHandlers();
+}
+
+function openDocumentModal(existing) {
+  const modalTitle = existing ? 'Edit Document' : 'Add Document';
+  showModal(`
+    <div class="content-modal">
+      <h2 style="margin:0 0 20px;font-size:18px;font-weight:700;color:#2D1810">${modalTitle}</h2>
+
+      <div id="doc-modal-file-area" style="margin-bottom:16px;border-radius:10px;overflow:hidden;border:2px dashed #E8D5C4;min-height:120px;background:#FFF8F0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;transition:border-color .15s;padding:24px" onclick="$('#doc-file-input').click()">
+        ${existing
+          ? `<div style="display:flex;align-items:center;gap:10px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#E8732A" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span style="font-size:13px;font-weight:500;color:#2D1810">${esc(existing.file_name || 'Current PDF')}</span></div>
+             <span style="font-size:11px;color:#9B8578">Click to replace with a new PDF</span>`
+          : `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#D4A843" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+             <span style="font-size:13px;color:#9B8578;font-weight:500">Click to choose a PDF file</span>
+             <span style="font-size:11px;color:#C8B8AD">PDF only · max 20 MB</span>`}
+      </div>
+      <input type="file" id="doc-file-input" accept="application/pdf" style="display:none" />
+
+      <div id="doc-modal-err" style="display:none;margin-bottom:12px;padding:8px 12px;background:#FFF5F5;border:1px solid #FECACA;border-radius:8px;font-size:13px;color:#C0392B"></div>
+
+      <div class="field">
+        <label style="font-size:12px;font-weight:600;color:#6B4C3B;margin-bottom:5px;display:block">Title (English) *</label>
+        <input id="doc-title" type="text" placeholder="e.g. ROR Document 2026" value="${existing ? esc(existing.title) : ''}" style="width:100%;box-sizing:border-box" />
+      </div>
+      <div class="field">
+        <label style="font-size:12px;font-weight:600;color:#6B4C3B;margin-bottom:5px;display:block">Title (Odia) <span style="font-weight:400;color:#9B8578">(optional)</span></label>
+        <input id="doc-title-or" type="text" placeholder="ଓଡ଼ିଆ ଶୀର୍ଷକ" value="${existing ? esc(existing.title_or || '') : ''}" style="width:100%;box-sizing:border-box" />
+      </div>
+      <div class="field">
+        <label style="font-size:12px;font-weight:600;color:#6B4C3B;margin-bottom:5px;display:block">Description (English) <span style="font-weight:400;color:#9B8578">(optional)</span></label>
+        <textarea id="doc-desc" rows="3" placeholder="Brief description..." style="resize:vertical;width:100%;box-sizing:border-box">${existing ? esc(existing.description || '') : ''}</textarea>
+      </div>
+      <div class="field">
+        <label style="font-size:12px;font-weight:600;color:#6B4C3B;margin-bottom:5px;display:block">Category *</label>
+        <select id="doc-category" style="width:100%;box-sizing:border-box">
+          ${DOC_CATEGORIES.map(c => `<option value="${c.key}" ${existing && existing.category === c.key ? 'selected' : ''}>${c.label}</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="content-modal-actions">
+        <button class="btn btn-ghost" id="doc-modal-cancel">Cancel</button>
+        <button class="btn btn-primary" id="doc-modal-save" style="flex:1">${existing ? 'Save Changes' : 'Add Document'}</button>
+      </div>
+    </div>
+  `);
+
+  let uploadedFileUrl = existing ? existing.file_url : '';
+  let uploadedFileName = existing ? existing.file_name : '';
+  let uploadedFileSize = existing ? existing.file_size : 0;
+  let pendingFile = null;
+
+  $('#doc-file-input').addEventListener('change', () => {
+    const file = $('#doc-file-input').files[0];
+    if (!file) return;
+    if (file.size > 20 * 1024 * 1024) {
+      const errEl = $('#doc-modal-err');
+      errEl.textContent = 'File too large. Maximum size is 20 MB.';
+      errEl.style.display = '';
+      return;
+    }
+    if (file.type !== 'application/pdf') {
+      const errEl = $('#doc-modal-err');
+      errEl.textContent = 'Only PDF files are allowed.';
+      errEl.style.display = '';
+      return;
+    }
+    const errEl = $('#doc-modal-err');
+    errEl.style.display = 'none';
+    const area = $('#doc-modal-file-area');
+    area.innerHTML = `<div style="display:flex;align-items:center;gap:10px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#E8732A" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span style="font-size:13px;font-weight:500;color:#2D1810">${esc(file.name)}</span></div><span style="font-size:11px;color:#27AE60;font-weight:500">Ready to upload</span>`;
+    area.style.border = '2px solid #27AE60';
+    pendingFile = file;
+    uploadedFileUrl = '';
+  });
+
+  $('#doc-modal-cancel').onclick = closeModal;
+
+  $('#doc-modal-save').onclick = async () => {
+    const titleVal = $('#doc-title').value.trim();
+    const title_or = $('#doc-title-or').value.trim() || null;
+    const desc = $('#doc-desc').value.trim() || null;
+    const category = $('#doc-category').value;
+    const errEl = $('#doc-modal-err');
+
+    if (!titleVal) {
+      errEl.textContent = 'Title is required.';
+      errEl.style.display = '';
+      return;
+    }
+    if (!existing && !pendingFile && !uploadedFileUrl) {
+      errEl.textContent = 'Please select a PDF file to upload.';
+      errEl.style.display = '';
+      return;
+    }
+    errEl.style.display = 'none';
+    const saveBtn = $('#doc-modal-save');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Uploading…';
+
+    if (pendingFile) {
+      const path = `documents/${Date.now()}_${pendingFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+      const { error: upErr } = await db.storage.from('documents').upload(path, pendingFile, { contentType: 'application/pdf', upsert: false });
+      if (upErr) {
+        errEl.textContent = `Upload failed: ${upErr.message}`;
+        errEl.style.display = '';
+        saveBtn.disabled = false;
+        saveBtn.textContent = existing ? 'Save Changes' : 'Add Document';
+        return;
+      }
+      const { data: urlData } = db.storage.from('documents').getPublicUrl(path);
+      uploadedFileUrl = urlData.publicUrl;
+      uploadedFileName = pendingFile.name;
+      uploadedFileSize = pendingFile.size;
+    }
+
+    saveBtn.textContent = 'Saving…';
+    let dbErr;
+    if (existing) {
+      const upd = { title: titleVal, title_or, description: desc, category, updated_at: new Date().toISOString() };
+      if (uploadedFileUrl && uploadedFileUrl !== existing.file_url) {
+        upd.file_url = uploadedFileUrl;
+        upd.file_name = uploadedFileName;
+        upd.file_size = uploadedFileSize;
+      }
+      ({ error: dbErr } = await db.from('documents').update(upd).eq('id', existing.id));
+    } else {
+      const maxOrder = state.documents.length > 0 ? Math.max(...state.documents.map(d => d.display_order)) + 1 : 0;
+      ({ error: dbErr } = await db.from('documents').insert({ title: titleVal, title_or, description: desc, category, file_url: uploadedFileUrl, file_name: uploadedFileName, file_size: uploadedFileSize, display_order: maxOrder, is_active: true }));
+    }
+
+    if (dbErr) {
+      errEl.textContent = `Save failed: ${dbErr.message}`;
+      errEl.style.display = '';
+      saveBtn.disabled = false;
+      saveBtn.textContent = existing ? 'Save Changes' : 'Add Document';
+      return;
+    }
+
+    closeModal();
+    await loadDocuments();
+    const c = $('#view-container');
+    if (c && state.view === 'documents') renderDocumentsView(c);
+    showToast(existing ? 'Document updated.' : 'Document added.', 'success');
+  };
+}
+
+function attachDocumentsHandlers() {
+  $('#doc-add-btn')?.addEventListener('click', () => openDocumentModal(null));
+
+  $$('.doc-edit').forEach(btn => {
+    btn.onclick = () => {
+      const doc = state.documents.find(d => d.id === btn.dataset.id);
+      if (doc) openDocumentModal(doc);
+    };
+  });
+
+  $$('.doc-toggle').forEach(btn => {
+    btn.onclick = async () => {
+      const doc = state.documents.find(d => d.id === btn.dataset.id);
+      if (!doc) return;
+      await db.from('documents').update({ is_active: !doc.is_active }).eq('id', doc.id);
+      await loadDocuments();
+      const c = $('#view-container');
+      if (c && state.view === 'documents') renderDocumentsView(c);
+    };
+  });
+
+  $$('.doc-move-up').forEach(btn => {
+    btn.onclick = async () => {
+      const sorted = [...state.documents].sort((a, b) => a.display_order - b.display_order);
+      const idx = sorted.findIndex(d => d.id === btn.dataset.id);
+      if (idx <= 0) return;
+      const a = sorted[idx], b = sorted[idx - 1];
+      await Promise.all([
+        db.from('documents').update({ display_order: b.display_order }).eq('id', a.id),
+        db.from('documents').update({ display_order: a.display_order }).eq('id', b.id),
+      ]);
+      await loadDocuments();
+      const c = $('#view-container');
+      if (c && state.view === 'documents') renderDocumentsView(c);
+    };
+  });
+
+  $$('.doc-move-down').forEach(btn => {
+    btn.onclick = async () => {
+      const sorted = [...state.documents].sort((a, b) => a.display_order - b.display_order);
+      const idx = sorted.findIndex(d => d.id === btn.dataset.id);
+      if (idx < 0 || idx >= sorted.length - 1) return;
+      const a = sorted[idx], b = sorted[idx + 1];
+      await Promise.all([
+        db.from('documents').update({ display_order: b.display_order }).eq('id', a.id),
+        db.from('documents').update({ display_order: a.display_order }).eq('id', b.id),
+      ]);
+      await loadDocuments();
+      const c = $('#view-container');
+      if (c && state.view === 'documents') renderDocumentsView(c);
+    };
+  });
+
+  $$('.doc-delete').forEach(btn => {
+    btn.onclick = () => {
+      showConfirm({
+        title: 'Delete Document',
+        message: 'This document will be removed and no longer visible to Sebayats.',
+        confirmLabel: 'Delete',
+        danger: true,
+        onConfirm: async () => {
+          await db.from('documents').delete().eq('id', btn.dataset.id);
+          await loadDocuments();
+          const c = $('#view-container');
+          if (c && state.view === 'documents') renderDocumentsView(c);
+          showToast('Document deleted.', 'success');
         },
       });
     };
@@ -11522,4 +12867,203 @@ function openSebaTodayWalkinModal() {
     await loadSebaTodayData();
     _paintSebaTodayTable();
   };
+}
+
+/* ============================================================
+   SAHI MANAGEMENT MODULE
+   ============================================================ */
+
+async function loadSahiManagement() {
+  state.sahiLoading = true;
+  const { data } = await db.from('sahis').select('id, name, name_or, sort_order, is_active, created_at').order('is_active', { ascending: false }).order('sort_order').order('name');
+  state.sahiList = data || [];
+  state.sahiLoading = false;
+  state.sahiLoaded = true;
+}
+
+function renderSahiManagementView() {
+  if (state.sahiLoading && !state.sahiLoaded) {
+    return `<div style="padding:60px;text-align:center;color:var(--ink4)">Loading Sahi records…</div>`;
+  }
+  const list = state.sahiList;
+  return `
+    <div class="view-header">
+      <div>
+        <h2 class="view-title">Sahi Management</h2>
+        <p class="view-sub">Manage Sahi (locality) records. Active Sahis appear in the registration form dropdown.</p>
+      </div>
+      <button class="btn btn-primary" id="sahi-create-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Sahi
+      </button>
+    </div>
+    ${list.length === 0 ? `
+      <div style="text-align:center;padding:80px 40px;color:var(--ink4)">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 16px;display:block;opacity:0.4"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        <div style="font-size:16px;font-weight:600;margin-bottom:8px">No Sahi records yet</div>
+        <div style="font-size:14px">Create your first Sahi to enable the dropdown in the registration form.</div>
+      </div>
+    ` : `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;padding:24px">
+        ${list.map(s => renderSahiCard(s)).join('')}
+      </div>
+    `}
+  `;
+}
+
+function renderSahiCard(s) {
+  return `
+    <div style="background:#fff;border:1px solid var(--border);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:12px;${s.is_active ? '' : 'opacity:0.55'}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:40px;height:40px;border-radius:10px;background:#7B3F0020;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7B3F00" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          </div>
+          <div>
+            <div style="font-weight:600;font-size:15px;color:var(--ink1)">${esc(s.name)}</div>
+            ${s.name_or ? `<div style="font-size:13px;color:var(--ink3);margin-top:2px">${esc(s.name_or)}</div>` : `<div style="font-size:12px;color:var(--ink4);margin-top:2px;font-style:italic">Odia name not set</div>`}
+          </div>
+        </div>
+        <span style="padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600;background:${s.is_active?'#ECFDF5':'#F5F5F5'};color:${s.is_active?'#166534':'#6B7280'}">${s.is_active?'Active':'Inactive'}</span>
+      </div>
+      ${s.sort_order !== 0 ? `<div style="font-size:12px;color:var(--ink4)">Sort order: ${s.sort_order}</div>` : ''}
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="btn btn-ghost btn-sm sahi-edit-btn" data-id="${s.id}" style="flex:1">Edit</button>
+        <button class="btn btn-ghost btn-sm sahi-toggle-btn" data-id="${s.id}" data-active="${s.is_active}" style="flex:1;color:${s.is_active?'var(--red)':'var(--green)'}">
+          ${s.is_active?'Deactivate':'Activate'}
+        </button>
+        <button class="btn btn-ghost btn-sm sahi-delete-btn" data-id="${s.id}" style="color:var(--red)" title="Delete">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function renderSahiFormModal(existing) {
+  const isEdit = !!(existing && existing.id);
+  const s = existing || { name: '', name_or: '', sort_order: 0 };
+  return `
+    <div class="modal-header">
+      <div>
+        <h3 class="modal-title">${isEdit ? 'Edit Sahi' : 'New Sahi'}</h3>
+        <p class="modal-desc">${isEdit ? 'Update the Sahi record' : 'Create a new Sahi record for the registration form'}</p>
+      </div>
+      <button class="modal-close" onclick="closeModal()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:16px">
+      ${state.sahiFormError ? `<div style="background:var(--red-bg);color:var(--red);border-radius:var(--radius);padding:10px 14px;font-size:13px">${esc(state.sahiFormError)}</div>` : ''}
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:5px">Sahi Name (English) <span style="color:var(--red)">*</span></label>
+        <input type="text" id="sf-name" value="${esc(s.name)}" placeholder="e.g. Markandeswar Sahi" style="width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:inherit;color:var(--ink);background:#fff;outline:none;box-sizing:border-box" />
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:5px">Odia Name</label>
+        <input type="text" id="sf-name-or" value="${esc(s.name_or || '')}" placeholder="Odia name (optional)" style="width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:inherit;color:var(--ink);background:#fff;outline:none;box-sizing:border-box" />
+      </div>
+      <div>
+        <label style="display:block;font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:5px">Sort Order</label>
+        <input type="number" id="sf-sort" value="${s.sort_order || 0}" placeholder="0" style="width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:13px;font-family:inherit;color:var(--ink);background:#fff;outline:none;box-sizing:border-box" />
+        <div style="font-size:12px;color:var(--ink4);margin-top:4px">Lower numbers appear first in the dropdown.</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="sf-save-btn">${state.sahiFormSaving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Sahi'}</button>
+    </div>
+  `;
+}
+
+function attachSahiManagementHandlers() {
+  if (!state.sahiLoaded && !state.sahiLoading) {
+    loadSahiManagement().then(() => {
+      const c = $('#view-container');
+      if (c && state.view === 'sahi_management') { c.innerHTML = renderSahiManagementView(); attachSahiManagementHandlers(); }
+    });
+    return;
+  }
+
+  $('#sahi-create-btn')?.addEventListener('click', () => {
+    state.sahiFormError = '';
+    showModal(renderSahiFormModal(null));
+    attachSahiFormHandlers(null);
+  });
+
+  document.querySelectorAll('.sahi-edit-btn').forEach(btn => {
+    btn.onclick = () => {
+      const s = state.sahiList.find(x => x.id === btn.dataset.id);
+      if (!s) return;
+      state.sahiFormError = '';
+      showModal(renderSahiFormModal(s));
+      attachSahiFormHandlers(s);
+    };
+  });
+
+  document.querySelectorAll('.sahi-toggle-btn').forEach(btn => {
+    btn.onclick = () => {
+      const isActive = btn.dataset.active === 'true';
+      const s = state.sahiList.find(x => x.id === btn.dataset.id);
+      if (!s) return;
+      showConfirm({
+        title: `${isActive ? 'Deactivate' : 'Activate'} Sahi`,
+        message: `Are you sure you want to ${isActive ? 'deactivate' : 'activate'} this Sahi? ${isActive ? 'It will no longer appear in the registration form.' : 'It will appear in the registration form again.'}`,
+        confirmLabel: isActive ? 'Deactivate' : 'Activate',
+        danger: isActive,
+        onConfirm: async () => {
+          const { error } = await db.from('sahis').update({ is_active: !isActive, updated_at: new Date().toISOString() }).eq('id', btn.dataset.id);
+          if (error) { showToast('Could not update Sahi.', 'error'); return; }
+          await loadSahiManagement();
+          const c = $('#view-container');
+          if (c && state.view === 'sahi_management') { c.innerHTML = renderSahiManagementView(); attachSahiManagementHandlers(); }
+          showToast(`Sahi ${isActive ? 'deactivated' : 'activated'}.`, 'success');
+        },
+      });
+    };
+  });
+
+  document.querySelectorAll('.sahi-delete-btn').forEach(btn => {
+    btn.onclick = () => {
+      const s = state.sahiList.find(x => x.id === btn.dataset.id);
+      if (!s) return;
+      showConfirm({
+        title: 'Delete Sahi',
+        message: `Are you sure you want to delete "${esc(s.name)}"? This cannot be undone.`,
+        confirmLabel: 'Delete',
+        danger: true,
+        onConfirm: async () => {
+          const { error } = await db.from('sahis').delete().eq('id', s.id);
+          if (error) { showToast('Could not delete Sahi.', 'error'); return; }
+          await loadSahiManagement();
+          const c = $('#view-container');
+          if (c && state.view === 'sahi_management') { c.innerHTML = renderSahiManagementView(); attachSahiManagementHandlers(); }
+          showToast('Sahi deleted.', 'success');
+        },
+      });
+    };
+  });
+}
+
+function attachSahiFormHandlers(existing) {
+  $('#sf-save-btn')?.addEventListener('click', async () => {
+    const name = $('#sf-name')?.value?.trim() || '';
+    const name_or = $('#sf-name-or')?.value?.trim() || null;
+    const sort_order = parseInt($('#sf-sort')?.value || '0', 10) || 0;
+    if (!name) { state.sahiFormError = 'Sahi name is required.'; showModal(renderSahiFormModal(existing)); attachSahiFormHandlers(existing); return; }
+    state.sahiFormSaving = true;
+    let error;
+    if (existing) {
+      ({ error } = await db.from('sahis').update({ name, name_or, sort_order, updated_at: new Date().toISOString() }).eq('id', existing.id));
+    } else {
+      ({ error } = await db.from('sahis').insert({ name, name_or, sort_order }));
+    }
+    state.sahiFormSaving = false;
+    if (error) { state.sahiFormError = error.message; showModal(renderSahiFormModal(existing)); attachSahiFormHandlers(existing); return; }
+    closeModal();
+    await loadSahiManagement();
+    const c = $('#view-container');
+    if (c && state.view === 'sahi_management') { c.innerHTML = renderSahiManagementView(); attachSahiManagementHandlers(); }
+    showToast(existing ? 'Sahi updated.' : 'Sahi created.', 'success');
+  });
 }

@@ -74,10 +74,11 @@ export default function MembersScreen() {
     const { data } = await supabase
       .from('nijog_assignments')
       .select(
-        'sebayat_id, beddha_number, seba_categories!inner(name, group_id), sebayats!inner(full_name, profile_status)'
+        'sebayat_id, beddha_number, seba_categories!inner(name, group_id), sebayats!inner(full_name, profile_status, is_suspended)'
       )
       .eq('seba_categories.group_id', groups.id)
-      .eq('sebayats.profile_status', 'approved');
+      .eq('sebayats.profile_status', 'approved')
+      .eq('sebayats.is_suspended', false);
 
     if (data) {
       const seen = new Set<string>();
@@ -101,11 +102,13 @@ export default function MembersScreen() {
 
   function renderMember({ item, index }: { item: Member; index: number }) {
     return (
-      <View
+      <TouchableOpacity
         style={[
           styles.memberRow,
           index < members.length - 1 && styles.memberRowBorder,
         ]}
+        onPress={() => router.push(`/sebayat/${item.id}`)}
+        activeOpacity={0.75}
       >
         <View style={styles.memberAvatar}>
           <Text style={[styles.memberAvatarText, { color: config.iconColor }]}>
@@ -120,7 +123,7 @@ export default function MembersScreen() {
           <Hash color={C.textMuted} size={11} />
           <Text style={styles.memberBeddhaText}>{item.beddha_number}</Text>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   }
 

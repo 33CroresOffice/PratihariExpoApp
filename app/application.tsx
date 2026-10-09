@@ -113,6 +113,22 @@ function getStatusMeta(key: string) {
   return STATUS_META[key] ?? STATUS_META.pending;
 }
 
+const APPLICATION_TYPE_ICONS: Record<string, any> = {
+  AlertCircle,
+  CircleAlert: AlertCircle,
+  FileText,
+  Search,
+  Send,
+  User,
+  Star,
+  Paperclip,
+};
+
+function ApplicationTypeIcon({ name, color, size }: { name: string; color: string; size: number }) {
+  const Icon = APPLICATION_TYPE_ICONS[name] ?? FileText;
+  return <Icon color={color} size={size} />;
+}
+
 function timeAgoLocalized(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
   const days = Math.floor(diff / 86400000);
@@ -480,7 +496,9 @@ export default function ApplicationScreen() {
           </View>
         ) : (
           <ScrollView contentContainerStyle={styles.typeList} showsVerticalScrollIndicator={false}>
-            {appTypes.map((type) => (
+            {appTypes.map((type) => {
+              const TypeIcon = APPLICATION_TYPE_ICONS[type.icon] ?? FileText;
+              return (
               <TouchableOpacity
                 key={type.id}
                 style={styles.typeCard}
@@ -488,7 +506,7 @@ export default function ApplicationScreen() {
                 activeOpacity={0.85}
               >
                 <View style={[styles.typeIconBox, { backgroundColor: type.color + '20' }]}>
-                  <Text style={[styles.typeIconText, { color: type.color }]}>{type.icon}</Text>
+                  <TypeIcon color={type.color} size={22} />
                 </View>
                 <View style={styles.typeCardBody}>
                   <Text style={styles.typeCardName}>{type.name}</Text>
@@ -498,7 +516,8 @@ export default function ApplicationScreen() {
                 </View>
                 <ChevronRight color={C.textMuted} size={18} />
               </TouchableOpacity>
-            ))}
+              );
+            })}
             <View style={{ height: 32 }} />
           </ScrollView>
         )}
@@ -521,7 +540,7 @@ export default function ApplicationScreen() {
 
         <ScrollView contentContainerStyle={styles.formScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <View style={[styles.typePillRow, { backgroundColor: selectedType.color + '15' }]}>
-            <Text style={[styles.typePillIcon, { color: selectedType.color }]}>{selectedType.icon}</Text>
+            <ApplicationTypeIcon name={selectedType.icon} color={selectedType.color} size={18} />
             <Text style={[styles.typePillName, { color: selectedType.color }]}>{selectedType.name}</Text>
           </View>
 
@@ -628,7 +647,6 @@ export default function ApplicationScreen() {
               <View style={styles.uploadHeader}>
                 <Paperclip color={C.saffron} size={16} />
                 <Text style={styles.uploadTitle}>{t('application.supportingDocs')}</Text>
-                <Text style={styles.uploadRequired}>*</Text>
               </View>
               <Text style={styles.uploadHint}>{t('application.uploadHint')}</Text>
 
@@ -703,10 +721,6 @@ export default function ApplicationScreen() {
             onPress={() => {
               const errors = validateStep2();
               if (Object.keys(errors).length > 0) { setFormErrors(errors); return; }
-              if (selectedType.requires_documents && uploadedFiles.length === 0) {
-                setUploadError(t('application.uploadAtLeastOne'));
-                return;
-              }
               setFormErrors({});
               setUploadError('');
               setScreen('new_confirm');
@@ -739,7 +753,7 @@ export default function ApplicationScreen() {
           <View style={styles.confirmSection}>
             <Text style={styles.confirmSectionLabel}>{t('application.applicationType')}</Text>
             <View style={[styles.typePillRow, { backgroundColor: selectedType.color + '15' }]}>
-              <Text style={[styles.typePillIcon, { color: selectedType.color }]}>{selectedType.icon}</Text>
+              <ApplicationTypeIcon name={selectedType.icon} color={selectedType.color} size={18} />
               <Text style={[styles.typePillName, { color: selectedType.color }]}>{selectedType.name}</Text>
             </View>
           </View>
@@ -852,9 +866,11 @@ export default function ApplicationScreen() {
             {/* Type + meta */}
             {selected.application_types && (
               <View style={[styles.typePillRow, { backgroundColor: (selected.application_types.color || C.saffron) + '15', marginHorizontal: 16, marginBottom: 12 }]}>
-                <Text style={[styles.typePillIcon, { color: selected.application_types.color || C.saffron }]}>
-                  {selected.application_types.icon}
-                </Text>
+                <ApplicationTypeIcon
+                  name={selected.application_types.icon}
+                  color={selected.application_types.color || C.saffron}
+                  size={18}
+                />
                 <Text style={[styles.typePillName, { color: selected.application_types.color || C.saffron }, odiaFont]}>
                   {selected.application_types.name}
                 </Text>
@@ -1044,7 +1060,7 @@ export default function ApplicationScreen() {
               onPress={() => setFilterStatus(key)}
               activeOpacity={0.7}
             >
-              <Text style={[styles.filterChipText, active && { color: meta.color }, odiaFont]}>{meta.label}</Text>
+              <Text style={[styles.filterChipText, active && { color: meta.color }, odiaFont]}>{getStatusMeta(key).label}</Text>
             </TouchableOpacity>
           );
         })}
@@ -1063,7 +1079,7 @@ export default function ApplicationScreen() {
           <Text style={styles.emptySub}>
             {filterStatus === 'all'
               ? t('application.noApplicationsDesc')
-              : `${t('application.all')} — ${STATUS_META[filterStatus]?.label?.toLowerCase()}`}
+              : `${t('application.all')} — ${getStatusMeta(filterStatus).label.toLowerCase()}`}
           </Text>
           {filterStatus === 'all' && (
             <TouchableOpacity style={styles.emptyNewBtn} onPress={startNewApplication} activeOpacity={0.85}>
@@ -1088,7 +1104,11 @@ export default function ApplicationScreen() {
                 <View style={styles.appCardTop}>
                   {item.application_types && (
                     <View style={[styles.appTypeChip, { backgroundColor: (item.application_types.color || C.saffron) + '18' }]}>
-                      <Text style={{ fontSize: 12 }}>{item.application_types.icon}</Text>
+                      <ApplicationTypeIcon
+                        name={item.application_types.icon}
+                        color={item.application_types.color || C.saffron}
+                        size={13}
+                      />
                       <Text style={[styles.appTypeChipText, { color: item.application_types.color || C.saffron }]}>
                         {item.application_types.name}
                       </Text>

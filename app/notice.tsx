@@ -15,7 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { ArrowLeft, Megaphone, Bell, Pin, TriangleAlert as AlertTriangle, Calendar, Briefcase, Info, X, ChevronRight } from 'lucide-react-native';
+import { ArrowLeft, Megaphone, Bell, Pin, TriangleAlert as AlertTriangle, Calendar, Briefcase, Info, Users, X, ChevronRight } from 'lucide-react-native';
 import { useOffline } from '@/contexts/OfflineContext';
 import { hydrateFromCache, writeCache } from '@/lib/cachedQuery';
 import { OfflineBanner } from '@/components/OfflineBanner';
@@ -37,10 +37,12 @@ const C = {
 };
 
 const CATEGORIES = [
-  { key: 'general', labelKey: 'notice.general', color: '#1D6FAE', bg: '#EBF5FB', icon: Info },
-  { key: 'duty',    labelKey: 'notice.duty',    color: '#B7770D', bg: '#FFF3CD', icon: Calendar },
-  { key: 'event',   labelKey: 'notice.event',   color: '#27AE60', bg: '#F0FFF4', icon: Briefcase },
-  { key: 'urgent',  labelKey: 'notice.urgent',  color: '#C0392B', bg: '#FFF5F5', icon: AlertTriangle },
+  { key: 'general',   labelKey: 'notice.general',    color: '#1D6FAE', bg: '#EBF5FB', icon: Info },
+  { key: 'duty',      labelKey: 'notice.duty',       color: '#B7770D', bg: '#FFF3CD', icon: Calendar },
+  { key: 'event',     labelKey: 'notice.event',      color: '#27AE60', bg: '#F0FFF4', icon: Briefcase },
+  { key: 'urgent',    labelKey: 'notice.urgent',     color: '#C0392B', bg: '#FFF5F5', icon: AlertTriangle },
+  { key: 'temple',    labelKey: 'notice.temple',     color: '#8B5CF6', bg: '#F5F0FF', icon: Bell },
+  { key: 'committee', labelKey: 'notice.committee',  color: '#0E7C7B', bg: '#E0F5F5', icon: Users },
 ];
 
 function getCat(key: string) {
