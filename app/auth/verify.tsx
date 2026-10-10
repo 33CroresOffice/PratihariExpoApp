@@ -127,9 +127,9 @@ export default function VerifyScreen() {
 
         {testOtp ? (
           <View style={styles.testBanner}>
-            <Text style={styles.testBannerTitle}>Test Mode</Text>
+            {/* <Text style={styles.testBannerTitle}>Test Mode</Text> */}
             <Text style={styles.testBannerText}>
-              Use code <Text style={styles.testBannerCode}>{testOtp}</Text> to sign in
+              Use this code <Text style={styles.testBannerCode}>{testOtp}</Text> to sign in
             </Text>
           </View>
         ) : null}
