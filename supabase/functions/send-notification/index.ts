@@ -316,8 +316,17 @@ Deno.serve(async (req: Request) => {
           });
 
           providerResponse = await response.json();
-          const hasError = (providerResponse as Record<string, unknown>).errors;
-          pushStatus = hasError ? "failed" : "sent";
+          const pr = providerResponse as { errors?: unknown; data?: unknown };
+          const tickets = Array.isArray(pr.data) ? pr.data : pr.data ? [pr.data] : [];
+          const failedTicket = tickets.find((t: { status?: string }) => t?.status === "error") as
+            | { message?: string }
+            | undefined;
+          if (pr.errors || failedTicket) {
+            pushStatus = "failed";
+            errorMessage = failedTicket?.message ?? "Expo push request returned errors";
+          } else {
+            pushStatus = "sent";
+          }
         } else {
           pushStatus = "skipped";
           errorMessage = "No push tokens registered for sebayat";

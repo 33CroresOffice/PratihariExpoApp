@@ -2,7 +2,7 @@
   "expo": {
     "name": "Pratihari",
     "slug": "pratihari",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "myapp",
@@ -25,13 +25,28 @@
       "expo-router",
       "expo-font",
       "expo-web-browser",
-      "expo-localization"
+      "expo-localization",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#FFFDF9"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
     },
     "android": {
-      "package": "com.x33croresdev.pratihari"
-    }
+      "package": "com.x33croresdev.pratihari",
+      "googleServicesFile": "./android/app/google-services.json"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "55e88d37-98c8-4a8f-b86e-b1f1aa49fa92"
+      }
+    },
+    "owner": "33croresdev"
   }
 }

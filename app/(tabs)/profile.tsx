@@ -637,7 +637,7 @@ export default function ProfileScreen() {
             <View style={styles.statusDateRow}>
               <Hash color={cfg.color} size={13} />
               <Text style={[styles.statusDateText, { color: cfg.color }]}>
-                Registration No. {profile.registration_no || 'Not assigned'}
+                Registration No. {profile?.registration_no || 'Not assigned'}
               </Text>
             </View>
           ) : null}

@@ -129,8 +129,8 @@ export default function AdminCommittee() {
       .select('id, full_name, first_name, last_name, phone, primary_phone')
       .eq('profile_status', 'approved')
       .eq('is_suspended', false)
-      .order('full_name', { nullsLast: true })
-      .order('first_name', { nullsLast: true })
+      .order('full_name', { ascending: true, nullsFirst: false })
+      .order('first_name', { ascending: true, nullsFirst: false })
       .then(({ data }) => setSebayats(data || []));
   }, []);
 

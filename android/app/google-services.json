@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "883433316784",
+    "project_id": "pratiharinijog-1588c",
+    "storage_bucket": "pratiharinijog-1588c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:883433316784:android:3f2f4eb21d72be518c3675",
+        "android_client_info": {
+          "package_name": "com.x33croresdev.pratihari"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDSNBAb5VMpxMi33QJM5DZebaHZ6_SXclA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

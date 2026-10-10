@@ -1593,7 +1593,7 @@ export default function RegisterScreen() {
       supabase.from('occupations').delete().eq('sebayat_id', rowId),
       supabase.from('identity_documents').delete().eq('sebayat_id', rowId),
     ]);
-    const ins: Promise<any>[] = [];
+    const ins: PromiseLike<any>[] = [];
     const xp = form.extra_phones.filter((p) => p.trim());
     if (xp.length > 0) ins.push(supabase.from('phone_numbers').insert(xp.map((p) => ({ sebayat_id: rowId, phone_number: p.trim(), label: 'additional' }))));
     const vc = form.children.filter((c) => c.child_name.trim());

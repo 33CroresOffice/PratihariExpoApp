@@ -257,7 +257,7 @@ export default function ApplicationScreen() {
       .order('created_at', { ascending: false });
 
     if (isRefresh) setRefreshing(false); else setLoading(false);
-    setApps((data as Application[]) ?? []);
+    setApps((data as unknown as Application[]) ?? []);
   }, [sebayatId]);
 
   useEffect(() => {

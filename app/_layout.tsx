@@ -34,6 +34,7 @@ import { OfflineProvider } from '@/contexts/OfflineContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import SplashScreenView from '@/components/SplashScreenView';
 import '@/lib/i18n';
+import { attachNotificationListeners, logDeviceFcmToken, setupNotificationChannel } from '@/lib/notificationHandler';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -177,6 +178,16 @@ function RootNavigator() {
 
   const [splashDone, setSplashDone] = useState(false);
   const [minTimeElapsed, setMinTimeElapsed] = useState(false);
+
+  useEffect(() => {
+    setupNotificationChannel().catch(() => {});
+    logDeviceFcmToken();
+  }, []);
+
+  useEffect(() => {
+    if (!session) return;
+    return attachNotificationListeners(router);
+  }, [session]);
 
   useEffect(() => {
     const t = setTimeout(() => setMinTimeElapsed(true), 2000);
